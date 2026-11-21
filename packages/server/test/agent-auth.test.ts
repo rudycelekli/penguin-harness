@@ -458,17 +458,6 @@ describe("auth refiners (<roleOrRoute>@<refinerId>)", () => {
     }
 
     let askApprovalDecision = false;
-    const origAuthenticate = agentAuth.authenticate.bind(agentAuth);
-    const wrappedAgentAuth = {
-      authenticate: (bearer: string, now: Date) => {
-        const res = origAuthenticate(bearer, now);
-        if (res === null) return null;
-        return {
-          ...res,
-          askApproval: async () => askApprovalDecision,
-        };
-      },
-    };
 
     const agentConfigGroup = new Hono<AppEnv>();
     agentConfigGroup.get("/", (c) => c.json({ ok: "getConfig", agentId: c.req.param("agentId") }));
@@ -488,7 +477,7 @@ describe("auth refiners (<roleOrRoute>@<refinerId>)", () => {
         authenticateWithMeta: () => null,
         sessionIsLive: () => false,
       },
-      agentAuth: wrappedAgentAuth,
+      agentAuth,
       errors: { record: () => {} },
       settings: {
         getAttachmentLimitsMb: () => ({
@@ -525,7 +514,7 @@ describe("auth refiners (<roleOrRoute>@<refinerId>)", () => {
             id: "withAsk",
             from: "AuthWithAskRefiner",
             data: { scope: ["*"], order: 1000 },
-            code: new AuthWithAskRefiner(),
+            code: new AuthWithAskRefiner(async () => askApprovalDecision),
           },
           {
             id: "self",

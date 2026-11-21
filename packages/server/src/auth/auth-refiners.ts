@@ -43,10 +43,6 @@ export interface AuthRefinerContext {
   readonly agentId: string;
   readonly role: string;
   readonly generation: number;
-  /**
-   * Optional interactive approval callback invoked by `@withAsk` (or custom interactive refiners).
-   */
-  readonly askApproval?: (action: AuthRefinerAction, request?: Request) => Promise<boolean>;
 }
 
 /** The HTTP route action being authorized by an `AuthRefiner`. */
@@ -233,7 +229,7 @@ export class AuthSelfRefiner {
 
 /**
  * Built-in `@withAsk` refiner (`agent.maintain@withAsk`, `plugin.maintain@withAsk`, etc.).
- * Requires interactive approval via `ctx.askApproval(action, request)` within `ctx.projectId`.
+ * Requires interactive approval within `ctx.projectId`.
  */
 @Component({
   contributes: {
@@ -249,6 +245,14 @@ export class AuthSelfRefiner {
 export class AuthWithAskRefiner {
   @Bind("withAsk") readonly refiner: AuthRefiner = this;
 
+  constructor(
+    private readonly decide?: (
+      ctx: AuthRefinerContext,
+      action: AuthRefinerAction,
+      request?: Opaque<"Request", Request>,
+    ) => Promise<boolean> | boolean,
+  ) {}
+
   async authenticate(
     ctx: AuthRefinerContext,
     action: AuthRefinerAction,
@@ -258,10 +262,10 @@ export class AuthWithAskRefiner {
     if (targetProjectId !== undefined && targetProjectId !== ctx.projectId) {
       return false;
     }
-    if (typeof ctx.askApproval !== "function") {
+    if (typeof this.decide !== "function") {
       return false;
     }
-    return Boolean(await ctx.askApproval(action, request));
+    return Boolean(await this.decide(ctx, action, request));
   }
 }
 

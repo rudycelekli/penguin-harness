@@ -19,13 +19,6 @@ export interface AgentRequestAuth {
     routeRefiners?: Readonly<Record<string, readonly string[]>>;
   };
   agentApi: boolean;
-  askApproval?: (action: {
-    readonly routeId: string;
-    readonly groupId?: string;
-    readonly method: string;
-    readonly path: string;
-    readonly params: Readonly<Record<string, string>>;
-  }) => Promise<boolean>;
 }
 
 export type AppEnv = {

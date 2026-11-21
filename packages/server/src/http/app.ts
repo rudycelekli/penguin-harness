@@ -241,7 +241,6 @@ async function checkRouteAuth(
       agentId: agentAuth.agentId,
       role: grant.role,
       generation: grant.generation,
-      ...(agentAuth.askApproval !== undefined ? { askApproval: agentAuth.askApproval } : {}),
     };
     const action: AuthRefinerAction = {
       routeId: normalized,

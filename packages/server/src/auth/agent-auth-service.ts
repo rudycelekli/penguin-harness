@@ -38,17 +38,6 @@ export interface AgentAuthContext {
   grant: AgentAuthGrant;
   /** Whether the grant also reaches the Agent's own API settings and keys. */
   agentApi: boolean;
-  /** Optional interactive approval hook used by `@withAsk` refiners. */
-  askApproval?: (
-    action: {
-      readonly routeId: string;
-      readonly groupId?: string;
-      readonly method: string;
-      readonly path: string;
-      readonly params: Readonly<Record<string, string>>;
-    },
-    request?: Request,
-  ) => Promise<boolean>;
 }
 
 @Component()
