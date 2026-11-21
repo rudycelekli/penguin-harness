@@ -283,6 +283,10 @@ export function toolModelBindingsOver(
         auth: "user",
         // Before the models group (100), whose prefix is this one's parent.
         order: 99,
+        endpoints: {
+          "GET /": "model.toolBindings.list",
+          "PUT /:key": "model.toolBindings.set",
+        },
       },
     ],
   },

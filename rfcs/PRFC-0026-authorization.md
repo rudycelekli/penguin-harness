@@ -89,13 +89,15 @@ The data shape for the `HttpModule.routes` slot contains the following fields:
 - `auth: "user" | "token" | "none"` — the authentication gate for the route (`"user"` accepts a human session, the local API token, or an authorized Agent session; `"token"` accepts only the local API token; `"none"` is public).
 - `order: number` — the mount order on the HTTP application.
 - `endpoints?: Readonly<Record<string, string>>` — an optional sub-route map (`"METHOD /subpath"` -> fine-grained route `id`) for multi-endpoint Hono route groups, allowing modules and plugins to register fine-grained endpoint IDs directly in their route contribution.
-- `roles?: readonly string[]` — an optional list of role bindings (supporting `<roleId>@<refinerId>`, such as `["readonly"]` or `["myPlugin.maintain", "general@self"]`) that grants this route (and any sub-routes in `endpoints`) directly to the named role nodes.
+- `role?: string` and `roles?: readonly string[]` — optional role bindings (supporting `<roleId>@<refinerId>`, such as `"readonly"` or `["myPlugin.maintain", "general@self"]`) that grant this route (and any sub-routes in `endpoints`) directly to the named role nodes. Route IDs and role bindings must be explicit identifiers; wildcard patterns (`*`) are rejected.
 
 When a component defines several endpoints on one `Hono` group, `endpointOf(group, method, subPath)` builds a single-route `Hono` wrapper that preserves the group's middleware and error handler while dispatching only the declared method and path. This keeps related handlers in one component while giving every endpoint its own route `id` in the manifest.
 
-### Extensible Role Registry (`RoleRegistry`) and `HttpModule.roles` slot
+### Extensible Role Registry (`RoleRegistry`), `roles`, and `roleBindings` slots
 
-The role tree is managed by an extensible `RoleRegistry`. Core modules and external plugins contribute `RoleContribution` entries to the `HttpModule.roles` (or `AgentAuthPermissionProvider.roles`) slot to define new role nodes or extend existing roles additively without editing a central static table:
+The role tree and route bindings are assembled exclusively through declarative module contributions (`BuiltinAuthRoles` contributes the built-in domain and composite roles alongside feature modules and external plugins):
+
+1. **Role node contributions (`HttpModule.roles` / `AgentAuthPermissionProvider.roles`)**: Components contribute `RoleContribution` entries to define new role nodes or extend existing roles additively:
 
 ```ts
 @Component({
@@ -118,8 +120,14 @@ The role tree is managed by an extensible `RoleRegistry`. Core modules and exter
 ```
 
 - `role?: string` — the target role ID, defaulting to the contribution entry's `id`. When multiple modules extend the same existing role (such as `"readonly"`), each keeps a globally unique contribution `id` while targeting the shared role via `role`.
-- `children?: readonly string[]`, `routes?: readonly string[]`, `flags?: RoleFlags` — merged by set union into the target role node, supporting dotted route wildcards such as `myPlugin.*` and `agents.messaging.*.get`.
+- `children?: readonly string[]`, `routes?: readonly string[]`, `flags?: RoleFlags` — merged by set union into the target role node. Every route and role identifier must be explicit; wildcard patterns (`*`) are rejected at registration and grant evaluation time.
 - `parents?: readonly string[]` — attaches the target role into each named parent role's `children` (supporting an optional `@<refinerId>` suffix on the parent entry, for example `"general@self"`, which injects `<role>@self` into `general`).
+
+2. **Unified `role -> http` binding contributions (`HttpModule.roleBindings` / `AgentAuthPermissionProvider.roleBindings`)**: Modules can contribute `RoleHttpBindingContribution` entries separately from route definitions to bind roles to HTTP route IDs in one place:
+
+- `role?: string` and `routes?: readonly string[]` — binds a single role node (supporting `<roleId>@<refinerId>`) to an explicit list of HTTP route IDs.
+- `bindings?: Readonly<Record<string, readonly string[]>>` — batch-maps multiple role identifiers to their explicit lists of HTTP route IDs.
+- `endpoints?: Readonly<Record<string, Readonly<Record<string, string>>>>` and `aliases?: Readonly<Record<string, string>>` — registers multi-endpoint group sub-route maps (`groupId -> { "METHOD /subpath": routeId }`) and route ID aliases.
 
 ### Declarative Role Tree (`ROLE_TREE`) and permission scopes
 
@@ -191,10 +199,11 @@ Every protected request entering `HttpModule` passes through two checks:
 2. **Route Authorization**:
    - Human user requests proceed under standard user and administrator checks.
    - Agent requests (`c.var.agentAuth` present) run `checkRouteAuth(c, route.id)` before the route handler:
-     - Endpoint check: requires `grant.allEndpoints === true` or `grant.apiIds.has(routeId)` (plus wildcard pattern match when configured), returning `403 permission_required` otherwise.
+     - Endpoint check: requires `grant.allEndpoints === true` or an exact `grant.apiIds.has(routeId)` match, returning `403 permission_required` otherwise.
      - Project isolation check: when `grant.allEndpoints === false` and the route carries a `:projectId` parameter, `:projectId` must equal `agentAuth.projectId`, returning `403 permission_required` otherwise.
      - Auth Refiner check: when the route carries refiner bindings (such as `<domain>.maintain@self`), evaluates the bound `AuthRefiner` components in priority order.
      - Human-only gate (`requireHuman`): permits Agent requests only when `agentAuth.agentApi === true` (`system-maintainer` or `full-permissions`), returning `403 human_required` otherwise.
+     - Source module diagnostics on failure: every role, route, `role -> http` binding, and `AuthRefiner` registration records the contributing module's identifier (`sourceModule`, populated from the kernel contribution source `c.from`). When authorization fails, the server logs the failure and attaches structured `sourceModule` diagnostics (`sourceModule`, `routeSourceModule`, `roleSourceModules`, `bindingSourceModules`, `refinerSourceModule`, and `requiredRoles`) to the `403` error response `details`.
 
 ### Boundary of the CLI surface
 

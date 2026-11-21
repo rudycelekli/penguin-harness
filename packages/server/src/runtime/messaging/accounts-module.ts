@@ -23,12 +23,29 @@ import type { SessionIndex } from "@prismshadow/penguin-library-session";
         prefix: "/api/messaging",
         auth: "user",
         order: 281,
+        role: "messaging.read",
       },
       {
         id: "messaging.account-holders",
         prefix: "/api/projects/:projectId/messaging",
         auth: "user",
         order: 282,
+        role: "messaging.read",
+      },
+    ],
+    "HttpModule.roleBindings": [
+      {
+        id: "messaging.accounts.bindings",
+        endpoints: {
+          "messaging.accounts": {
+            "GET /accounts": "messaging.listAccounts",
+          },
+          "messaging.account-holders": {
+            "GET /account-holders": "messaging.listAccountHolders",
+          },
+        },
+        role: "messaging.read",
+        routes: ["messaging.listAccounts", "messaging.listAccountHolders"],
       },
     ],
   },

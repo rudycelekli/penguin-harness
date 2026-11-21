@@ -117,12 +117,32 @@ export function adminPluginModuleRoutes(deps: PluginModuleRoutesDeps): Hono<AppE
         auth: "user",
         // Ahead of the Projects group, whose `/:projectId/…` would otherwise answer here.
         order: 61,
+        role: "plugin.maintain",
       },
       {
         id: "PluginModuleRoutes.admin",
         prefix: "/api/admin/plugin-modules",
         auth: "user",
         order: 46,
+      },
+    ],
+    "HttpModule.roleBindings": [
+      {
+        id: "PluginModuleRoutes.bindings",
+        endpoints: {
+          "PluginModuleRoutes.project": {
+            "POST /": "plugin.project.requestModule",
+          },
+          "PluginModuleRoutes.admin": {
+            "GET /": "admin.pluginModules.list",
+            "POST /decide": "admin.pluginModules.decide",
+          },
+        },
+        bindings: {
+          "plugin.maintain": ["plugin.project.requestModule"],
+          "admin.read": ["admin.pluginModules.list"],
+          "admin.maintain": ["admin.pluginModules.decide"],
+        },
       },
     ],
   },

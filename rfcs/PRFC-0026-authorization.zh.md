@@ -89,13 +89,15 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 - `auth: "user" | "token" | "none"`——路由的鉴权门类（`"user"` 接受人类会话、本机 API 令牌或被授权的 Agent 会话；`"token"` 仅接受本机 API 令牌；`"none"` 为公开路由）。
 - `order: number`——路由挂载顺序。
 - `endpoints?: Readonly<Record<string, string>>`——可选的多端点子路由映射表（键为 `"METHOD /subpath"`，值为细粒度路由 `id`），让模块或插件在贡献 Hono 路由组时直接注册子端点 `id`。
-- `roles?: readonly string[]`——可选的角色绑定列表（支持 `<roleId>@<refinerId>`，例如 `["readonly"]` 或 `["myPlugin.maintain", "general@self"]`），将当前路由（及 `endpoints` 中的子路由）直接授予指定角色节点。
+- `role?: string` 与 `roles?: readonly string[]`——可选的角色绑定声明（支持 `<roleId>@<refinerId>`，例如 `"readonly"` 或 `["myPlugin.maintain", "general@self"]`），将当前路由（及 `endpoints` 中的子路由）直接授予指定角色节点。路由 `id` 与角色声明均须为精确标识，禁止使用 `*` 通配符。
 
 当一个路由组件在一个 `Hono` 实例上定义多个动作时，`endpointOf(group, method, subPath)` 构造一个只响应指定方法与路径的轻量 `Hono` 包装，保留原路由组的中间件与错误处理器，并将请求分发到目标处理器。这样既保持组件内部共享依赖，又让每条端点在清单中拥有独立的路由 `id`。
 
-### 可扩展角色注册表（`RoleRegistry`）与 `HttpModule.roles` 槽
+### 可扩展角色注册表（`RoleRegistry`）与 `roles`、`roleBindings` 槽
 
-角色树由可扩展的 `RoleRegistry` 管理。核心模块与外部插件通过 `HttpModule.roles`（或 `AgentAuthPermissionProvider.roles`）槽贡献 `RoleContribution` 条目，按并集方式定义新角色节点或扩展既有角色，无需修改中心静态表：
+角色树与路由授权映射全部通过模块声明式贡献组装（内置角色树与路由绑定同样由 `BuiltinAuthRoles` 组件以贡献方式提供，与业务模块及外部插件使用同一机制）：
+
+1. **角色节点贡献（`HttpModule.roles` / `AgentAuthPermissionProvider.roles`）**：组件通过贡献 `RoleContribution` 条目按并集方式定义新角色节点或扩展既有角色：
 
 ```ts
 @Component({
@@ -118,8 +120,14 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 ```
 
 - `role?: string`——目标角色名，默认取贡献条目的 `id`；当多个模块扩展同一个既有角色（如 `"readonly"`）时，各自保持全局唯一的 `id` 并通过 `role` 指向同一角色节点。
-- `children?: readonly string[]`、`routes?: readonly string[]`、`flags?: RoleFlags`——向目标角色节点按集合并集追加子角色、路由（支持点分通配符如 `myPlugin.*` 与 `agents.messaging.*.get`）与能力标志。
+- `children?: readonly string[]`、`routes?: readonly string[]`、`flags?: RoleFlags`——向目标角色节点按集合并集追加子角色、精确路由 `id` 与能力标志。注册与授权展开阶段均拒绝任何包含 `*` 的通配符模式。
 - `parents?: readonly string[]`——将当前角色挂载到指定父角色的 `children` 中（支持在父角色项上附加 `@<refinerId>`，例如 `"general@self"` 会向 `general` 注入 `<role>@self`）。
+
+2. **统一 `role -> http` 绑定贡献（`HttpModule.roleBindings` / `AgentAuthPermissionProvider.roleBindings`）**：模块可在路由定义之外独立贡献 `RoleHttpBindingContribution` 条目，统一声明角色到 HTTP 路由 `id` 的绑定：
+
+- `role?: string` 与 `routes?: readonly string[]`——将单个角色（支持 `<roleId>@<refinerId>`）绑定到一组精确的 HTTP 路由 `id`。
+- `bindings?: Readonly<Record<string, readonly string[]>>`——批量映射多个角色标识到各自的精确 HTTP 路由 `id` 列表。
+- `endpoints?: Readonly<Record<string, Readonly<Record<string, string>>>>` 与 `aliases?: Readonly<Record<string, string>>`——注册多端点路由组的子路由映射表（`groupId -> { "METHOD /subpath": routeId }`）及路由 `id` 兼容别名。
 
 ### 声明式角色树（`ROLE_TREE`）与权限范围
 
@@ -191,10 +199,11 @@ export class AuthSelfRefiner {
 2. **路由级授权（Route Authorization）**：
    - 对人类用户请求：按既有的用户与管理员规则放行。
    - 对 Agent 请求（`c.var.agentAuth` 存在）：在路由入口执行 `checkRouteAuth(c, route.id)`：
-     - 校验端点授权：要求 `grant.allEndpoints === true` 或 `grant.apiIds.has(routeId)`（及通配模式匹配），未命中时返回 `403 permission_required`。
+     - 校验端点授权：要求 `grant.allEndpoints === true` 或精确命中 `grant.apiIds.has(routeId)`，未命中时返回 `403 permission_required`。
      - 校验项目隔离：当 `grant.allEndpoints === false` 且路由包含 `:projectId` 参数时，要求 `:projectId === agentAuth.projectId`，跨项目访问返回 `403 permission_required`。
      - 校验权限精化器（`AuthRefiner`）：若该路由绑定了精化器（如 `<domain>.maintain@self`），按序执行对应的 `AuthRefiner.authenticate(ctx, action, request)`。
      - 校验人类专属门（`requireHuman`）：仅当 `agentAuth.agentApi === true`（如 `system-maintainer` 或 `full-permissions` 角色）时放行，其余返回 `403 human_required`。
+     - 鉴权失败来源模块（`sourceModule`）诊断记录：每条角色贡献、HTTP 路由贡献、统一 `role -> http` 绑定贡献与 `AuthRefiner` 注册均记录其来源模块标识（`sourceModule`，取自模块系统贡献项的 `c.from`）。当鉴权失败时，服务端在诊断日志、错误消息与 `403` 响应的 `details` 字段中记录 `sourceModule` 诊断明细（含 `sourceModule`、`routeSourceModule`、`roleSourceModules`、`bindingSourceModules`、`refinerSourceModule` 与 `requiredRoles`），用于定位导致鉴权失败的模块来源。
 
 ### CLI 表面的边界划分
 

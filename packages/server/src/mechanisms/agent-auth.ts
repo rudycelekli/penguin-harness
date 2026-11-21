@@ -15,6 +15,8 @@ import type { Slot } from "@prismshadow/penguin-core/kernel";
 import type {
   AgentAuthRole,
   RoleContribution,
+  RoleHttpBindingContribution,
+  RouteAuthDebugInfo,
   RouteRoleRegistration,
 } from "../auth/agent-roles.js";
 import type { AgentAuthContext } from "../auth/agent-auth-service.js";
@@ -88,6 +90,11 @@ export interface AgentAuthPermissionsSlots {
    * `AgentAuthPermissionProvider.roles`.
    */
   roles: Slot<RoleContribution>;
+  /**
+   * Unified `role -> http` route binding contributions (`RoleHttpBindingContribution`)
+   * contributed to `AgentAuthPermissionProvider.roleBindings`.
+   */
+  roleBindings: Slot<RoleHttpBindingContribution>;
 }
 
 /** The per-route grant face: what AgentAuthPermissionProvider implements. */
@@ -96,9 +103,24 @@ export abstract class AgentAuthPermissions {
   /** The principal's CURRENT grant, from its CURRENT generation and role. */
   abstract grantOf(projectId: string, agentId: string): AgentAuthGrant | null;
   /** Registers or extends a role node in the permission provider's role registry. */
-  abstract registerRole(roleId: string, contribution: RoleContribution): void;
+  abstract registerRole(
+    roleId: string,
+    contribution: RoleContribution,
+    sourceModule?: string,
+  ): void;
   /** Registers a route's sub-endpoint mappings and direct role bindings. */
-  abstract registerRoute(registration: RouteRoleRegistration): void;
+  abstract registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void;
+  /** Registers a unified `role -> http` route binding contribution. */
+  abstract registerRoleBinding(
+    contribution: RoleHttpBindingContribution,
+    sourceModule?: string,
+  ): void;
+  /** Returns source-module debug attribution for an authorization failure on `routeId`. */
+  abstract describeRouteAuthFailure(
+    routeId: string,
+    role: string,
+    groupId?: string,
+  ): RouteAuthDebugInfo;
 }
 
 /** AuthRoleSessions: the mechanism AuthRoleSessionsRepo implements. */
@@ -194,7 +216,22 @@ export abstract class AgentAuth {
     now: Date,
   ): { generation: number; role: AgentAuthRole; apiIds: readonly string[]; token: string };
   /** Registers or extends a role node in the permission provider's role registry. */
-  abstract registerRole(roleId: string, contribution: RoleContribution): void;
+  abstract registerRole(
+    roleId: string,
+    contribution: RoleContribution,
+    sourceModule?: string,
+  ): void;
   /** Registers a route's sub-endpoint mappings and direct role bindings. */
-  abstract registerRoute(registration: RouteRoleRegistration): void;
+  abstract registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void;
+  /** Registers a unified `role -> http` route binding contribution. */
+  abstract registerRoleBinding(
+    contribution: RoleHttpBindingContribution,
+    sourceModule?: string,
+  ): void;
+  /** Returns source-module debug attribution for an authorization failure on `routeId`. */
+  abstract describeRouteAuthFailure(
+    routeId: string,
+    role: string,
+    groupId?: string,
+  ): RouteAuthDebugInfo;
 }

@@ -34,7 +34,6 @@ import {
 import {
   DEFAULT_ROLE_REGISTRY,
   RoleRegistry,
-  routePatternMatches,
 } from "./agent-roles.js";
 
 /** The authenticated Agent session context passed to `AuthRefiner.authenticate`. */
@@ -131,7 +130,7 @@ export function compileRefinerScope(
       continue;
     }
     // Check if it is a known leaf route ID; if it is a bare domain name (e.g. "agent"), treat as prefix "agent."
-    if (roleRegistry.allHttpRouteIds.includes(normalized) || normalized.includes("*")) {
+    if (roleRegistry.allHttpRouteIds.includes(normalized)) {
       exactRouteIds.add(normalized);
     } else {
       exactRouteIds.add(normalized);
@@ -152,6 +151,8 @@ export function matchesRefinerScope(
   scope: CompiledRefinerScope,
   routeId: string,
   roleRegistry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
+  refinerId?: string,
+  allowStaticallyRefinedFallback = false,
 ): boolean {
   if (scope.wildcard) return true;
   const normalized = roleRegistry.normalizeRouteId(routeId);
@@ -163,10 +164,12 @@ export function matchesRefinerScope(
       return true;
     }
   }
-  for (const pattern of scope.exactRouteIds) {
-    if (pattern.includes("*") && routePatternMatches(pattern, normalized, roleRegistry)) {
-      return true;
-    }
+  if (
+    allowStaticallyRefinedFallback &&
+    refinerId !== undefined &&
+    roleRegistry.isStaticallyRefinedRoute(refinerId, normalized)
+  ) {
+    return true;
   }
   return false;
 }
@@ -198,7 +201,6 @@ export function matchesRefinerScope(
           "command.",
           "trace.",
           "benchmark.",
-          "*",
         ],
       },
     ],
@@ -276,16 +278,19 @@ export interface RegisteredAuthRefiner {
   readonly id: string;
   readonly scope: CompiledRefinerScope;
   readonly refiner: AuthRefiner;
+  readonly sourceModule: string;
 }
 
 export type AuthRefinerClass = new () => AuthRefiner & {
   readonly id?: string;
   readonly scope?: AuthRefinerScopeInput;
+  readonly sourceModule?: string;
 };
 
 export interface AuthRefinerDescriptor {
   readonly id: string;
   readonly scope?: AuthRefinerScopeInput;
+  readonly sourceModule?: string;
   readonly refiner?: AuthRefiner;
   readonly authenticate?: (
     ctx: AuthRefinerContext,
@@ -302,6 +307,14 @@ export type AuthRefinerEvaluationResult =
       readonly ok: false;
       readonly code: "auth_refiner_undefined" | "auth_refiner_mismatch" | "permission_required";
       readonly refinerId: string;
+      readonly sourceModule: string;
+      readonly routeSourceModule: string;
+      readonly refinerSourceModule?: string;
+      readonly reason:
+        | "refiner_undefined"
+        | "refiner_scope_mismatch"
+        | "refiner_error"
+        | "refiner_denied";
       readonly message: string;
     };
 
@@ -317,11 +330,16 @@ function resolveRefinerInput(
     const cls = input as AuthRefinerClass & {
       readonly id?: string;
       readonly scope?: AuthRefinerScopeInput;
+      readonly sourceModule?: string;
     };
     const instance = new cls();
+    let moduleName = instance.sourceModule ?? cls.sourceModule ?? cls.name ?? "AuthRefiner";
     const contributedEntries: Array<{ id: string; scope?: AuthRefinerScopeInput }> = [];
     try {
       const meta = moduleMetaOf(cls as unknown as ModuleClass);
+      if (typeof meta.name === "string" && meta.name !== "") {
+        moduleName = meta.name;
+      }
       if (meta.contributes !== undefined) {
         for (const list of Object.values(meta.contributes)) {
           if (!Array.isArray(list)) continue;
@@ -344,6 +362,7 @@ function resolveRefinerInput(
         id: entry.id,
         scope: compileRefinerScope(entry.scope ?? instance.scope ?? cls.scope, roleRegistry),
         refiner: instance,
+        sourceModule: moduleName,
       }));
     }
     const fallbackId =
@@ -358,6 +377,7 @@ function resolveRefinerInput(
         id: fallbackId,
         scope: compileRefinerScope(instance.scope ?? cls.scope, roleRegistry),
         refiner: instance,
+        sourceModule: moduleName,
       },
     ];
   }
@@ -379,6 +399,7 @@ function resolveRefinerInput(
       id: desc.id,
       scope: compileRefinerScope(desc.scope, roleRegistry),
       refiner: refinerObj,
+      sourceModule: desc.sourceModule ?? desc.id,
     },
   ];
 }
@@ -408,6 +429,7 @@ export class AuthRefinerRegistry {
     refinerList: readonly AuthRefinerInput[] = [],
     contributed: ReadonlyArray<{
       readonly id: string;
+      readonly from?: string;
       readonly data: Record<string, unknown>;
       readonly code?: unknown;
     }> = [],
@@ -449,6 +471,7 @@ export class AuthRefinerRegistry {
         id: c.id,
         scope: compileRefinerScope(rawScope, this.roleRegistry),
         refiner: code,
+        sourceModule: c.from ?? c.id,
       });
     }
 
@@ -469,7 +492,7 @@ export class AuthRefinerRegistry {
    * Resolves the highest-priority refiner candidate for `refinerId` whose declared `scope`
    * matches `routeId`. Returns:
    * - `{ status: "undefined" }` if `refinerId` is not registered at all;
-   * - `{ status: "mismatch" }` if `refinerId` is registered, but none of its candidates cover `routeId`;
+   * - `{ status: "mismatch", refinerSourceModule }` if `refinerId` is registered, but none of its candidates cover `routeId`;
    * - `{ status: "matched", entry }` with the winning `RegisteredAuthRefiner`.
    */
   resolveForRoute(
@@ -477,18 +500,30 @@ export class AuthRefinerRegistry {
     routeId: string,
   ):
     | { readonly status: "undefined" }
-    | { readonly status: "mismatch" }
+    | { readonly status: "mismatch"; readonly refinerSourceModule: string }
     | { readonly status: "matched"; readonly entry: RegisteredAuthRefiner } {
     const candidates = this.byId.get(refinerId);
     if (candidates === undefined || candidates.length === 0) {
       return { status: "undefined" };
     }
     for (const candidate of candidates) {
-      if (matchesRefinerScope(candidate.scope, routeId, this.roleRegistry)) {
+      const isBuiltinSelf = candidate.refiner instanceof AuthSelfRefiner;
+      if (
+        matchesRefinerScope(
+          candidate.scope,
+          routeId,
+          this.roleRegistry,
+          refinerId,
+          isBuiltinSelf,
+        )
+      ) {
         return { status: "matched", entry: candidate };
       }
     }
-    return { status: "mismatch" };
+    return {
+      status: "mismatch",
+      refinerSourceModule: candidates[0]?.sourceModule ?? refinerId,
+    };
   }
 
   /** Sorts a set of `refinerIds` according to the registry's priority list order. */
@@ -521,15 +556,25 @@ export class AuthRefinerRegistry {
       new Request(`http://localhost${action.path.startsWith("/") ? action.path : `/${action.path}`}`, {
         method: action.method,
       });
+    const routeSourceModule = this.roleRegistry.getRouteSourceModule(
+      action.routeId,
+      action.groupId,
+    );
     const orderedIds = this.sortRefinerIds(refinerIds);
     for (const refinerId of orderedIds) {
       const resolved = this.resolveForRoute(refinerId, action.routeId);
       if (resolved.status === "undefined") {
+        const bindingSource =
+          this.roleRegistry.getRefinerBindingSource(action.routeId, refinerId, ctx.role) ??
+          routeSourceModule;
         return {
           ok: false,
           code: "auth_refiner_undefined",
           refinerId,
-          message: `Auth refiner "@${refinerId}" is not defined (route "${action.routeId}"). ${ADMIN_REPAIR_INSTRUCTION}`,
+          sourceModule: bindingSource,
+          routeSourceModule,
+          reason: "refiner_undefined",
+          message: `Auth refiner "@${refinerId}" is not defined (route "${action.routeId}", sourceModule: ${bindingSource}). ${ADMIN_REPAIR_INSTRUCTION}`,
         };
       }
       if (resolved.status === "mismatch") {
@@ -537,9 +582,14 @@ export class AuthRefinerRegistry {
           ok: false,
           code: "auth_refiner_mismatch",
           refinerId,
-          message: `Auth refiner "@${refinerId}" failed to match action "${action.routeId}" in the current session. ${ADMIN_REPAIR_INSTRUCTION}`,
+          sourceModule: resolved.refinerSourceModule,
+          routeSourceModule,
+          refinerSourceModule: resolved.refinerSourceModule,
+          reason: "refiner_scope_mismatch",
+          message: `Auth refiner "@${refinerId}" failed to match action "${action.routeId}" in the current session (sourceModule: ${resolved.refinerSourceModule}, routeSourceModule: ${routeSourceModule}). ${ADMIN_REPAIR_INSTRUCTION}`,
         };
       }
+      const refinerSourceModule = resolved.entry.sourceModule;
       let allowed: unknown;
       try {
         allowed = await resolved.entry.refiner.authenticate(ctx, action, req);
@@ -549,7 +599,11 @@ export class AuthRefinerRegistry {
           ok: false,
           code: "auth_refiner_mismatch",
           refinerId,
-          message: `Auth refiner "@${refinerId}" failed while matching action "${action.routeId}" (${detail}). ${ADMIN_REPAIR_INSTRUCTION}`,
+          sourceModule: refinerSourceModule,
+          routeSourceModule,
+          refinerSourceModule,
+          reason: "refiner_error",
+          message: `Auth refiner "@${refinerId}" failed while matching action "${action.routeId}" (${detail}) (sourceModule: ${refinerSourceModule}, routeSourceModule: ${routeSourceModule}). ${ADMIN_REPAIR_INSTRUCTION}`,
         };
       }
       if (typeof allowed !== "boolean") {
@@ -557,7 +611,11 @@ export class AuthRefinerRegistry {
           ok: false,
           code: "auth_refiner_mismatch",
           refinerId,
-          message: `Auth refiner "@${refinerId}" returned a non-boolean result for action "${action.routeId}". ${ADMIN_REPAIR_INSTRUCTION}`,
+          sourceModule: refinerSourceModule,
+          routeSourceModule,
+          refinerSourceModule,
+          reason: "refiner_error",
+          message: `Auth refiner "@${refinerId}" returned a non-boolean result for action "${action.routeId}" (sourceModule: ${refinerSourceModule}, routeSourceModule: ${routeSourceModule}). ${ADMIN_REPAIR_INSTRUCTION}`,
         };
       }
       if (!allowed) {
@@ -565,7 +623,11 @@ export class AuthRefinerRegistry {
           ok: false,
           code: "permission_required",
           refinerId,
-          message: `Auth refiner "@${refinerId}" denied action "${action.routeId}" for role "${ctx.role}".`,
+          sourceModule: refinerSourceModule,
+          routeSourceModule,
+          refinerSourceModule,
+          reason: "refiner_denied",
+          message: `Auth refiner "@${refinerId}" denied action "${action.routeId}" for role "${ctx.role}" (sourceModule: ${refinerSourceModule}, routeSourceModule: ${routeSourceModule}).`,
         };
       }
     }

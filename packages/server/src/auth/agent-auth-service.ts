@@ -21,10 +21,13 @@ import { authRoleSessionTokenHash } from "../db/repos/auth-role-sessions.js";
 import {
   DEFAULT_AGENT_AUTH_ROLE,
   RoleRegistry,
+  assertNoWildcard,
   matchesRouteGrant,
   roleHasAgentApi,
   type AgentAuthRole,
   type RoleContribution,
+  type RoleHttpBindingContribution,
+  type RouteAuthDebugInfo,
   type RouteRoleRegistration,
 } from "./agent-roles.js";
 
@@ -89,6 +92,10 @@ export class AgentAuthService implements AgentAuth {
     apiIds: readonly string[],
     now: Date,
   ): { generation: number; role: AgentAuthRole; apiIds: readonly string[]; token: string } {
+    assertNoWildcard(role, "updateGrant(role)");
+    for (const apiId of apiIds) {
+      assertNoWildcard(apiId, "updateGrant(apiIds)");
+    }
     const current = this.authRoleSessions.generationOf(projectId, agentId);
     const nextGen = (current?.generation ?? 0) + 1;
     this.authRoleSessions.bumpGeneration(projectId, agentId, role, apiIds, nextGen);
@@ -109,13 +116,34 @@ export class AgentAuthService implements AgentAuth {
   }
 
   /** Registers or extends a role node in the permission provider's role registry. */
-  registerRole(roleId: string, contribution: RoleContribution): void {
-    this.agentAuthPermissions.registerRole(roleId, contribution);
+  registerRole(
+    roleId: string,
+    contribution: RoleContribution,
+    sourceModule?: string,
+  ): void {
+    this.agentAuthPermissions.registerRole(roleId, contribution, sourceModule);
   }
 
   /** Registers a route's sub-endpoint mappings and direct role bindings. */
-  registerRoute(registration: RouteRoleRegistration): void {
-    this.agentAuthPermissions.registerRoute(registration);
+  registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void {
+    this.agentAuthPermissions.registerRoute(registration, sourceModule);
+  }
+
+  /** Registers a unified `role -> http` route binding contribution. */
+  registerRoleBinding(
+    contribution: RoleHttpBindingContribution,
+    sourceModule?: string,
+  ): void {
+    this.agentAuthPermissions.registerRoleBinding(contribution, sourceModule);
+  }
+
+  /** Returns source-module debug attribution for an authorization failure on `routeId`. */
+  describeRouteAuthFailure(
+    routeId: string,
+    role: string,
+    groupId?: string,
+  ): RouteAuthDebugInfo {
+    return this.agentAuthPermissions.describeRouteAuthFailure(routeId, role, groupId);
   }
 
   /** The Agent's CURRENT generation row; null before its first session. */
@@ -168,19 +196,52 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
 
   setup({ contributions }: ClassCtx): void {
     const roles = contributions.roles as
-      | ReadonlyArray<{ readonly id: string; readonly data: RoleContribution }>
+      | ReadonlyArray<{
+          readonly id: string;
+          readonly from?: string;
+          readonly data: RoleContribution;
+        }>
       | undefined;
     if (roles !== undefined) {
       this.roleRegistry.registerRoles(roles);
     }
+    const roleBindings = contributions.roleBindings as
+      | ReadonlyArray<{
+          readonly id: string;
+          readonly from?: string;
+          readonly data: RoleHttpBindingContribution;
+        }>
+      | undefined;
+    if (roleBindings !== undefined) {
+      this.roleRegistry.registerRoleBindings(roleBindings);
+    }
   }
 
-  registerRole(roleId: string, contribution: RoleContribution): void {
-    this.roleRegistry.registerRole(roleId, contribution);
+  registerRole(
+    roleId: string,
+    contribution: RoleContribution,
+    sourceModule?: string,
+  ): void {
+    this.roleRegistry.registerRole(roleId, contribution, sourceModule);
   }
 
-  registerRoute(registration: RouteRoleRegistration): void {
-    this.roleRegistry.registerRoute(registration);
+  registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void {
+    this.roleRegistry.registerRoute(registration, sourceModule);
+  }
+
+  registerRoleBinding(
+    contribution: RoleHttpBindingContribution,
+    sourceModule?: string,
+  ): void {
+    this.roleRegistry.registerRoleBinding(contribution, sourceModule);
+  }
+
+  describeRouteAuthFailure(
+    routeId: string,
+    role: string,
+    groupId?: string,
+  ): RouteAuthDebugInfo {
+    return this.roleRegistry.describeRouteAuthFailure(routeId, role, groupId);
   }
 
   grantOf(projectId: string, agentId: string): AgentAuthGrant | null {

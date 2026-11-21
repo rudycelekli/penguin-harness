@@ -85,7 +85,7 @@ describe("Controlled Agent Auth QA: live LLM execution & 8 use-case categories",
 
       const httpServer = serve({
         fetch: (req) => currentFetch(req),
-        hostname: "127.0.0.1",
+        hostname: "localhost",
         port: 0,
       });
       await new Promise<void>((resolve) => {
@@ -225,7 +225,7 @@ describe("Controlled Agent Auth QA: live LLM execution & 8 use-case categories",
           `import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
-const apiUrl = "http://127.0.0.1:${port}";
+const apiUrl = process.env.PENGUIN_API_URL || "http://localhost:${port}";
 const isolatedRoot = ${JSON.stringify(isolatedRoot)};
 const token = process.env.PENGUIN_API_TOKEN;
 const projectId = process.env.PENGUIN_PROJECT_ID;
@@ -284,7 +284,7 @@ const report = {
   // 2. Admin CLI commands under general role
   adminCli: {
     modelListAllowed: runCli(["config", "model", "list", "--server", apiUrl]),
-    modelDefaultDenied: runCli(["config", "model", "default", "deepseek", "deepseek-chat", "--server", apiUrl]),
+    modelDefaultDenied: runCli(["config", "model", "default", "--provider", ${JSON.stringify(configuredModel.provider)}, "--model-id", ${JSON.stringify(configuredModel.modelId)}, "--server", apiUrl]),
     vaultListDenied: runCli(["config", "vault", "list", "--agent-id", "qa_runner", "--server", apiUrl]),
     vaultSetDenied: runCli(["config", "vault", "set", "--key", "QA_KEY", "--value", "secret", "--agent-id", "qa_runner", "--server", apiUrl]),
     authTokenDenied: runCli(["auth", "token", "--root", isolatedRoot]),
@@ -386,7 +386,7 @@ console.log("QA_TURN1_DONE");
 
         // 1. Server ops CLI under `general` + isolated root: `version --json` succeeds; isolated system commands cannot touch host root
         expect(r1.serverOpsCli.version.ok).toBe(true);
-        expect(JSON.parse(r1.serverOpsCli.version.stdout).running).toBe(false);
+        expect(typeof JSON.parse(r1.serverOpsCli.version.stdout).version).toBe("string");
         expect(JSON.parse(r1.serverOpsCli.serverStatusIsolated.stdout).running).toBe(false);
         expect(JSON.parse(r1.serverOpsCli.serverStopIsolated.stdout)).toEqual({ ok: true });
         expect(r1.serverOpsCli.resetPasswordDenied.ok).toBe(false);
@@ -394,7 +394,8 @@ console.log("QA_TURN1_DONE");
         // 2. Admin CLI under `general`: `config model list` succeeds; `config model default`, `vault list`, `vault set` are denied (403); `auth token` on isolated root fails
         expect(r1.adminCli.modelListAllowed.ok).toBe(true);
         expect(r1.adminCli.modelDefaultDenied.ok).toBe(false);
-        expect(r1.adminCli.modelDefaultDenied.stderr).toContain("model.updateConfig");
+        expect(r1.adminCli.modelDefaultDenied.stderr).toContain("model.setDefault");
+        expect(r1.adminCli.modelDefaultDenied.stderr).toContain("sourceModule: SessionApiRoutes");
         expect(r1.adminCli.vaultListDenied.ok).toBe(false);
         expect(r1.adminCli.vaultListDenied.stderr).toContain("vault.get");
         expect(r1.adminCli.vaultSetDenied.ok).toBe(false);
@@ -548,7 +549,7 @@ console.log("QA_TURN1_DONE");
           `import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 
-const apiUrl = "http://127.0.0.1:${port}";
+const apiUrl = process.env.PENGUIN_API_URL || "http://localhost:${port}";
 const token = process.env.PENGUIN_API_TOKEN;
 
 function runCli(args) {

@@ -125,7 +125,17 @@ function reseed(parked: unknown): MarketSnapshot | null {
 @Component({
   contributes: {
     "HttpModule.routes": [
-      { id: "PluginMarketRoutes.routes", prefix: "/api/plugins/market", auth: "user", order: 68 },
+      {
+        id: "PluginMarketRoutes.routes",
+        prefix: "/api/plugins/market",
+        auth: "user",
+        order: 68,
+        endpoints: {
+          "GET /": "plugin.market.get",
+          "GET /asset": "plugin.market.asset",
+        },
+        role: "plugin.read",
+      },
     ],
   },
   context: {

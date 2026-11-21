@@ -625,46 +625,64 @@ describe("auth refiners (<roleOrRoute>@<refinerId>)", () => {
   });
 });
 
-describe("extensible role registry and HttpModule.roles / HttpModule.routes slots", () => {
-  it("allows modules and plugins to register custom roles, graft into parent roles, map group sub-endpoints, and match wildcards", () => {
+describe("extensible role registry, unified role->http bindings, no-wildcard enforcement, and sourceModule debug attribution", () => {
+  it("allows modules and plugins to contribute roles, declare route role/roles, contribute unified role->http bindings, and rejects wildcards", () => {
     const registry = new RoleRegistry();
 
-    // Register multi-endpoint route group + direct role bindings via registerRoute
-    registry.registerRoute({
-      id: "billing.invoices",
-      endpoints: {
-        "GET /": "billing.invoices.list",
-        "POST /": "billing.invoices.create",
-        "DELETE /:id": "billing.invoices.delete",
+    // 1. Register multi-endpoint route group via registerRoute
+    registry.registerRoute(
+      {
+        id: "billing.invoices",
+        endpoints: {
+          "GET /": "billing.invoices.list",
+          "POST /": "billing.invoices.create",
+          "DELETE /:id": "billing.invoices.delete",
+        },
       },
-    });
+      "BillingRoutesModule",
+    );
 
-    // Register domain role tiers and graft them into composite roles (`readonly`, `general@self`, `system-maintainer`)
-    registry.registerRoles([
-      {
-        id: "billing.read",
-        routes: ["billing.invoices.list"],
-        parents: ["readonly"],
-      },
-      {
-        id: "billing.maintain",
-        children: ["billing.read"],
-        routes: ["billing.invoices.create"],
-        parents: ["general@self", "system-maintainer"],
-      },
-      {
-        id: "billing.all",
-        children: ["billing.maintain"],
-        routes: ["billing.invoices.delete"],
-        parents: ["admin"],
-      },
-      // Separate contribution with a distinct entry id extending an existing role via `role`
-      {
-        id: "pluginA.extendReadonly",
-        role: "readonly",
-        routes: ["pluginA.status.get"],
-      },
-    ]);
+    // 2. Register domain role tiers and graft them into composite roles (`readonly`, `general@self`, `system-maintainer`)
+    registry.registerRoles(
+      [
+        {
+          id: "billing.read",
+          parents: ["readonly"],
+        },
+        {
+          id: "billing.maintain",
+          children: ["billing.read"],
+          parents: ["general@self", "system-maintainer"],
+        },
+        {
+          id: "billing.all",
+          children: ["billing.maintain"],
+          parents: ["admin"],
+        },
+        // Separate contribution with a distinct entry id extending an existing role via `role`
+        {
+          id: "pluginA.extendReadonly",
+          role: "readonly",
+          routes: ["pluginA.status.get"],
+        },
+      ],
+      "BillingRolesModule",
+    );
+
+    // 3. Contribute unified `role -> http` bindings after role and route registration
+    registry.registerRoleBindings(
+      [
+        {
+          id: "billing.bind",
+          bindings: {
+            "billing.read": ["billing.invoices.list"],
+            "billing.maintain": ["billing.invoices.create"],
+            "billing.all": ["billing.invoices.delete"],
+          },
+        },
+      ],
+      "BillingBindingModule",
+    );
 
     expect(registry.resolveHttpRouteId("billing.invoices", "GET", "/")).toBe(
       "billing.invoices.list",
@@ -685,63 +703,40 @@ describe("extensible role registry and HttpModule.roles / HttpModule.routes slot
     expect(generalGrant.routeRefiners["billing.invoices.list"]).toBeUndefined();
     expect(generalGrant.routeRefiners["billing.invoices.create"]).toEqual(["self"]);
 
-    // Wildcard route grant (`billing.*@withAsk`) with unconditional override on `billing.invoices.list`
-    const wildcardGrant = registry.expandRoleGrant("none", [
-      "billing.*@withAsk",
-      "billing.invoices.list",
-    ]);
-    expect(matchesRouteGrant(wildcardGrant.apiIds, "billing.invoices.list", undefined, registry)).toBe(
-      true,
+    // 4. Wildcard patterns (`*`) are strictly forbidden in roles, routes, bindings, and grants
+    expect(() =>
+      registry.registerRole("bad.role", { routes: ["billing.*"] }, "BadModule"),
+    ).toThrow(/Wildcard pattern/);
+    expect(() =>
+      registry.registerRoute({ id: "bad.route", role: "billing.*" }, "BadModule"),
+    ).toThrow(/Wildcard pattern/);
+    expect(() =>
+      registry.registerRoleBinding(
+        { role: "billing.read", routes: ["billing.invoices.*"] },
+        "BadModule",
+      ),
+    ).toThrow(/Wildcard pattern/);
+    expect(() => registry.expandRoleGrant("none", ["billing.*@withAsk"])).toThrow(
+      /Wildcard pattern/,
     );
-    expect(
-      matchesRouteGrant(wildcardGrant.apiIds, "billing.invoices.delete", undefined, registry),
-    ).toBe(true);
-    expect(
-      matchesRouteGrant(wildcardGrant.apiIds, "billing.futureEndpoint", undefined, registry),
-    ).toBe(true);
-    expect(
-      resolveRouteRefiners(
-        wildcardGrant.routeRefiners,
-        wildcardGrant.apiIds,
-        "billing.invoices.list",
-        undefined,
-        registry,
-      ),
-    ).toBeUndefined();
-    expect(
-      resolveRouteRefiners(
-        wildcardGrant.routeRefiners,
-        wildcardGrant.apiIds,
-        "billing.invoices.delete",
-        undefined,
-        registry,
-      ),
-    ).toEqual(["withAsk"]);
-    expect(
-      resolveRouteRefiners(
-        wildcardGrant.routeRefiners,
-        wildcardGrant.apiIds,
-        "billing.futureEndpoint",
-        undefined,
-        registry,
-      ),
-    ).toEqual(["withAsk"]);
+    expect(() =>
+      matchesRouteGrant(readonlyGrant.apiIds, "billing.*", undefined, registry),
+    ).toThrow(/Wildcard pattern/);
 
-    // Dynamic messaging channels are automatically covered by `agents.messaging.read` / `agents.messaging.maintain`
-    const msgRead = registry.expandRoleGrant("agents.messaging.read");
-    expect(
-      matchesRouteGrant(msgRead.apiIds, "agents.messaging.slack.get", undefined, registry),
-    ).toBe(true);
-    expect(
-      matchesRouteGrant(msgRead.apiIds, "agents.messaging.slack.update", undefined, registry),
-    ).toBe(false);
-    const msgMaintain = registry.expandRoleGrant("agents.messaging.maintain");
-    expect(
-      matchesRouteGrant(msgMaintain.apiIds, "agents.messaging.slack.update", undefined, registry),
-    ).toBe(true);
+    // 5. `describeRouteAuthFailure` reports exact sourceModule attribution for debugging
+    const debugInfo = registry.describeRouteAuthFailure(
+      "billing.invoices.delete",
+      "billing.read",
+      "billing.invoices",
+    );
+    expect(debugInfo.sourceModule).toBe("BillingRoutesModule");
+    expect(debugInfo.routeSourceModule).toBe("BillingRoutesModule");
+    expect(debugInfo.roleSourceModules).toContain("BillingRolesModule");
+    expect(debugInfo.bindingSourceModules).toContain("BillingBindingModule");
+    expect(debugInfo.requiredRoles).toContain("billing.all");
   });
 
-  it("wires HttpModule.roles and HttpModule.routes (endpoints & roles) into AgentAuthService and HTTP route authorization", async () => {
+  it("wires HttpModule.roles, HttpModule.roleBindings, and HttpModule.routes (endpoints & role/roles) and records sourceModule on auth fail", async () => {
     const { auth: agentAuth } = service();
     const now = new Date();
     const { token } = agentAuth.issueSession("p1", "a1", now);
@@ -763,9 +758,10 @@ describe("extensible role registry and HttpModule.roles / HttpModule.routes slot
     const healthGroup = new Hono<AppEnv>();
     healthGroup.get("/", (c) => c.json({ ok: "plugin-health" }));
 
+    const loggedLines: string[] = [];
     const http = wire(HttpModule, {
       config: { trustProxy: false },
-      log: { line: () => {} },
+      log: { line: (msg: string) => loggedLines.push(msg) },
       auth: {
         sessionTtlMs: 1000,
         authenticateApiToken: () => null,
@@ -796,34 +792,44 @@ describe("extensible role registry and HttpModule.roles / HttpModule.routes slot
         roles: [
           {
             id: "myPlugin.read",
-            from: "myPlugin",
+            from: "MyPluginRolesModule",
             data: {
-              routes: ["myPlugin.items.list"],
               parents: ["readonly"],
             },
           },
           {
             id: "myPlugin.maintain",
-            from: "myPlugin",
+            from: "MyPluginRolesModule",
             data: {
               children: ["myPlugin.read"],
-              routes: ["myPlugin.items.update"],
               parents: ["general@self", "system-maintainer"],
             },
           },
           {
             id: "myPlugin.operator",
-            from: "myPlugin",
+            from: "MyPluginRolesModule",
             data: {
               children: ["myPlugin.maintain"],
-              routes: ["myPlugin.items.delete"],
+            },
+          },
+        ],
+        roleBindings: [
+          {
+            id: "myPlugin.bindings",
+            from: "MyPluginBindingsModule",
+            data: {
+              bindings: {
+                "myPlugin.read": ["myPlugin.items.list"],
+                "myPlugin.maintain": ["myPlugin.items.update"],
+                "myPlugin.operator": ["myPlugin.items.delete"],
+              },
             },
           },
         ],
         routes: [
           {
             id: "myPlugin.items",
-            from: "myPlugin",
+            from: "MyPluginRoutesModule",
             data: {
               prefix: "/api/projects/:projectId/agents/:agentId/my-plugin/items",
               auth: "user",
@@ -838,13 +844,13 @@ describe("extensible role registry and HttpModule.roles / HttpModule.routes slot
           },
           {
             id: "myPlugin.health",
-            from: "myPlugin",
+            from: "MyPluginHealthModule",
             data: {
               method: "GET",
               prefix: "/api/my-plugin/health",
               auth: "user",
               order: 601,
-              roles: ["readonly"],
+              role: "readonly",
             },
             code: endpointOf(healthGroup, "GET", "/"),
           },
@@ -865,7 +871,7 @@ describe("extensible role registry and HttpModule.roles / HttpModule.routes slot
         }),
       );
 
-    // 1. Default `general` role inherited `myPlugin.maintain@self` (and `readonly` -> `myPlugin.read` + `myPlugin.health`):
+    // 1. Default `general` role inherited `myPlugin.maintain@self` (and `readonly` -> `myPlugin.read` + `myPlugin.health` via `role: "readonly"`):
     expect(agentAuth.allowsEndpoint("p1", "a1", "myPlugin.items.list")).toBe(true);
     expect(agentAuth.allowsEndpoint("p1", "a1", "myPlugin.items.update")).toBe(true);
     expect(agentAuth.allowsEndpoint("p1", "a1", "myPlugin.items.delete")).toBe(false);
@@ -874,12 +880,45 @@ describe("extensible role registry and HttpModule.roles / HttpModule.routes slot
     expect((await req("GET", "/api/my-plugin/health")).status).toBe(200);
     expect((await req("GET", "/api/projects/p1/agents/a2/my-plugin/items")).status).toBe(200);
     expect((await req("PUT", "/api/projects/p1/agents/a1/my-plugin/items")).status).toBe(200);
-    // `@self` blocks mutating another agent (`a2`)
-    expect((await req("PUT", "/api/projects/p1/agents/a2/my-plugin/items")).status).toBe(403);
-    // `DELETE` is not in `myPlugin.maintain`
-    expect((await req("DELETE", "/api/projects/p1/agents/a1/my-plugin/items/item-1")).status).toBe(
-      403,
-    );
+
+    // `@self` blocks mutating another agent (`a2`) and records `sourceModule: "AuthSelfRefiner"` + `routeSourceModule: "MyPluginRoutesModule"`
+    const selfDenyRes = await req("PUT", "/api/projects/p1/agents/a2/my-plugin/items");
+    expect(selfDenyRes.status).toBe(403);
+    const selfDenyBody = (await selfDenyRes.json()) as {
+      error: { code: string; message: string; details?: Record<string, string> };
+    };
+    expect(selfDenyBody.error.code).toBe("permission_required");
+    expect(selfDenyBody.error.message).toContain("AuthSelfRefiner");
+    expect(selfDenyBody.error.details?.sourceModule).toBe("AuthSelfRefiner");
+    expect(selfDenyBody.error.details?.routeSourceModule).toBe("MyPluginRoutesModule");
+    expect(
+      loggedLines.some(
+        (line) =>
+          line.includes("[agent-auth] auth fail") &&
+          line.includes("sourceModule=AuthSelfRefiner") &&
+          line.includes("routeSource=MyPluginRoutesModule"),
+      ),
+    ).toBe(true);
+
+    // `DELETE` is not in `myPlugin.maintain`: records `sourceModule: "MyPluginRoutesModule"` and `bindingSourceModule: "MyPluginBindingsModule"`
+    const roleDenyRes = await req("DELETE", "/api/projects/p1/agents/a1/my-plugin/items/item-1");
+    expect(roleDenyRes.status).toBe(403);
+    const roleDenyBody = (await roleDenyRes.json()) as {
+      error: { code: string; message: string; details?: Record<string, string> };
+    };
+    expect(roleDenyBody.error.code).toBe("permission_required");
+    expect(roleDenyBody.error.message).toContain("MyPluginRoutesModule");
+    expect(roleDenyBody.error.details?.sourceModule).toBe("MyPluginRoutesModule");
+    expect(roleDenyBody.error.details?.bindingSourceModule).toBe("MyPluginBindingsModule");
+    expect(roleDenyBody.error.details?.requiredRoles).toBe("myPlugin.operator");
+    expect(
+      loggedLines.some(
+        (line) =>
+          line.includes("[agent-auth] auth fail") &&
+          line.includes("sourceModule=MyPluginRoutesModule") &&
+          line.includes("bindingSource=MyPluginBindingsModule"),
+      ),
+    ).toBe(true);
 
     // 2. Assigning custom role `myPlugin.operator` via `updateGrant` preserves the custom role name
     //    in the DB repo and grants `DELETE` across agents in `p1`:

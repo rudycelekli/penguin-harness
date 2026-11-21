@@ -37,6 +37,7 @@ import {
   matchesRouteGrant,
   resolveRouteRefiners,
   type RoleContribution,
+  type RoleHttpBindingContribution,
 } from "../auth/agent-roles.js";
 import {
   AuthRefinerRegistry,
@@ -110,7 +111,8 @@ export interface HttpSlots {
       auth: "user" | "token" | "none";
       order: number;
       origin?: "own";
-      endpoints?: Readonly<Record<string, string>>;
+      endpoints?: { readonly [methodPath: string]: string };
+      role?: string;
       roles?: readonly string[];
     },
     Opaque<"Hono", Hono<AppEnv>>
@@ -123,6 +125,12 @@ export interface HttpSlots {
    * `system-maintainer` (via `parents`).
    */
   roles: Slot<RoleContribution>;
+  /**
+   * Unified `role -> http` route binding contributions (`RoleHttpBindingContribution`).
+   * Allows modules and plugins to contribute `role -> http` route mappings separately from
+   * route mounts and role node declarations.
+   */
+  roleBindings: Slot<RoleHttpBindingContribution>;
   /**
    * An auth refiner (`<roleOrRoute>@<refinerId>`) contributed by a component or plugin.
    * `scope` declares the route IDs, role node names, or domain prefixes (e.g. `["agent."]`)
@@ -197,6 +205,7 @@ async function checkRouteAuth(
   groupId: string | undefined,
   refinerRegistry: AuthRefinerRegistry,
   roleRegistry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
+  log?: { line(msg: string): void },
 ): Promise<void> {
   const agentAuth = (c.var as AppEnv["Variables"]).agentAuth;
   if (agentAuth === undefined) return;
@@ -208,10 +217,36 @@ async function checkRouteAuth(
     !grant.allEndpoints &&
     !matchesRouteGrant(grant.apiIds, normalized, normalizedGroup, roleRegistry)
   ) {
+    const debugInfo = roleRegistry.describeRouteAuthFailure(
+      normalized,
+      grant.role,
+      normalizedGroup,
+    );
+    log?.line(
+      `[agent-auth] auth fail: code=permission_required reason=role_missing_route_grant route=${normalized} role=${grant.role} agent=${agentAuth.projectId}/${agentAuth.agentId} sourceModule=${debugInfo.sourceModule} routeSource=${debugInfo.routeSourceModule} roleSource=${debugInfo.roleSourceModules.join(",") || "none"} bindingSource=${debugInfo.bindingSourceModules.join(",") || "none"}`,
+    );
     throw new HttpError(
       403,
       "permission_required",
-      `Agent role "${grant.role}" does not grant "${normalized}".`,
+      `Agent role "${grant.role}" does not grant "${normalized}" (sourceModule: ${debugInfo.sourceModule}).`,
+      undefined,
+      {
+        sourceModule: debugInfo.sourceModule,
+        routeSourceModule: debugInfo.routeSourceModule,
+        ...(debugInfo.roleSourceModules.length > 0
+          ? { roleSourceModule: debugInfo.roleSourceModules.join(",") }
+          : {}),
+        ...(debugInfo.bindingSourceModules.length > 0
+          ? { bindingSourceModule: debugInfo.bindingSourceModules.join(",") }
+          : {}),
+        ...(debugInfo.requiredRoles.length > 0
+          ? { requiredRoles: debugInfo.requiredRoles.join(",") }
+          : {}),
+        routeId: normalized,
+        ...(normalizedGroup !== undefined ? { groupId: normalizedGroup } : {}),
+        role: grant.role,
+        reason: "role_missing_route_grant",
+      },
     );
   }
   const routeProjectId = c.req.param("projectId");
@@ -220,10 +255,26 @@ async function checkRouteAuth(
     routeProjectId !== undefined &&
     routeProjectId !== agentAuth.projectId
   ) {
+    const debugInfo = roleRegistry.describeRouteAuthFailure(
+      normalized,
+      grant.role,
+      normalizedGroup,
+    );
+    log?.line(
+      `[agent-auth] auth fail: code=permission_required reason=cross_project_denied route=${normalized} role=${grant.role} agent=${agentAuth.projectId}/${agentAuth.agentId} targetProject=${routeProjectId} sourceModule=${debugInfo.sourceModule}`,
+    );
     throw new HttpError(
       403,
       "permission_required",
-      `Agent session for project "${agentAuth.projectId}" cannot access project "${routeProjectId}".`,
+      `Agent session for project "${agentAuth.projectId}" cannot access project "${routeProjectId}" (sourceModule: ${debugInfo.sourceModule}).`,
+      undefined,
+      {
+        sourceModule: debugInfo.sourceModule,
+        routeSourceModule: debugInfo.routeSourceModule,
+        routeId: normalized,
+        role: grant.role,
+        reason: "cross_project_denied",
+      },
     );
   }
 
@@ -255,7 +306,20 @@ async function checkRouteAuth(
       c.req.raw,
     );
     if (!evalResult.ok) {
-      throw new HttpError(403, evalResult.code, evalResult.message);
+      log?.line(
+        `[agent-auth] auth fail: code=${evalResult.code} reason=${evalResult.reason} route=${normalized} role=${grant.role} agent=${agentAuth.projectId}/${agentAuth.agentId} refiner=@${evalResult.refinerId} sourceModule=${evalResult.sourceModule} routeSource=${evalResult.routeSourceModule}`,
+      );
+      throw new HttpError(403, evalResult.code, evalResult.message, undefined, {
+        sourceModule: evalResult.sourceModule,
+        routeSourceModule: evalResult.routeSourceModule,
+        ...(evalResult.refinerSourceModule !== undefined
+          ? { refinerSourceModule: evalResult.refinerSourceModule }
+          : {}),
+        refinerId: evalResult.refinerId,
+        routeId: normalized,
+        role: grant.role,
+        reason: evalResult.reason,
+      });
     }
   }
 
@@ -272,6 +336,7 @@ function withRouteAuth(
   groupId: string,
   refinerRegistry: AuthRefinerRegistry,
   roleRegistry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
+  log?: { line(msg: string): void },
 ): Hono<AppEnv> {
   const normalizedGroup = roleRegistry.normalizeRouteId(groupId);
   if (normalizedGroup === "session.forward") return source;
@@ -302,7 +367,14 @@ function withRouteAuth(
       route.method,
       route.path,
       async (c, next) => {
-        await checkRouteAuth(c, resolvedId, normalizedGroup, refinerRegistry, roleRegistry);
+        await checkRouteAuth(
+          c,
+          resolvedId,
+          normalizedGroup,
+          refinerRegistry,
+          roleRegistry,
+          log,
+        );
         await next();
       },
       ...groupMiddlewares,
@@ -340,34 +412,54 @@ export class HttpModule {
     const roleRegistry = new RoleRegistry();
     const roleContribs = (contributions.roles ?? []) as ReadonlyArray<{
       readonly id: string;
+      readonly from?: string;
       readonly data: RoleContribution;
     }>;
     for (const rc of roleContribs) {
-      roleRegistry.registerRole(rc.id, rc.data);
-      this.agentAuth?.registerRole?.(rc.id, rc.data);
+      roleRegistry.registerRole(rc.id, rc.data, rc.from);
+      this.agentAuth?.registerRole?.(rc.id, rc.data, rc.from);
+    }
+
+    const roleBindingContribs = (contributions.roleBindings ?? []) as ReadonlyArray<{
+      readonly id: string;
+      readonly from?: string;
+      readonly data: RoleHttpBindingContribution;
+    }>;
+    for (const rb of roleBindingContribs) {
+      roleRegistry.registerRoleBinding(rb.data, rb.from);
+      this.agentAuth?.registerRoleBinding?.(rb.data, rb.from);
     }
 
     const rawRoutes = contributions.routes ?? [];
     for (const c of rawRoutes) {
-      const endpoints = c.data.endpoints as Readonly<Record<string, string>> | undefined;
+      const endpoints = c.data.endpoints as { readonly [methodPath: string]: string } | undefined;
+      const role = c.data.role as string | undefined;
       const roles = c.data.roles as readonly string[] | undefined;
-      if (endpoints !== undefined || roles !== undefined) {
-        const reg = {
-          id: c.id,
-          ...(endpoints !== undefined ? { endpoints } : {}),
-          ...(roles !== undefined ? { roles } : {}),
-        };
-        roleRegistry.registerRoute(reg);
-        this.agentAuth?.registerRoute?.(reg);
-      }
+      const sourceModule = (c as { readonly from?: string }).from;
+      const reg = {
+        id: c.id,
+        ...(endpoints !== undefined ? { endpoints } : {}),
+        ...(role !== undefined ? { role } : {}),
+        ...(roles !== undefined ? { roles } : {}),
+        ...(sourceModule !== undefined ? { sourceModule } : {}),
+      };
+      roleRegistry.registerRoute(reg, sourceModule);
+      this.agentAuth?.registerRoute?.(reg, sourceModule);
     }
 
     const hasCustomRolesOrRoutes =
       roleContribs.length > 0 ||
-      rawRoutes.some((c) => c.data.endpoints !== undefined || c.data.roles !== undefined);
+      roleBindingContribs.length > 0 ||
+      rawRoutes.some(
+        (c) =>
+          c.data.endpoints !== undefined ||
+          c.data.role !== undefined ||
+          c.data.roles !== undefined,
+      );
     const agentAuthSynced =
       typeof this.agentAuth?.registerRole === "function" &&
-      typeof this.agentAuth?.registerRoute === "function";
+      typeof this.agentAuth?.registerRoute === "function" &&
+      typeof this.agentAuth?.registerRoleBinding === "function";
 
     const routes = [...rawRoutes]
       .map((c) => ({
@@ -591,7 +683,14 @@ export class HttpModule {
         // method, so another group's wider gate under the same prefix is not crossed.
         if (r.auth === "user") {
           app.on(r.method, r.prefix, once, async (c, next) => {
-            await checkRouteAuth(c, r.id, undefined, refinerRegistry, roleRegistry);
+            await checkRouteAuth(
+              c,
+              r.id,
+              undefined,
+              refinerRegistry,
+              roleRegistry,
+              this.log,
+            );
             await next();
           });
         }
@@ -602,7 +701,10 @@ export class HttpModule {
         // Agent-role check wraps the group's own handlers (withRouteAuth).
         if (r.auth === "user") {
           app.use(`${r.prefix.replace(/\/$/, "")}/*`, once);
-          app.route(r.prefix, withRouteAuth(r.app, r.id, refinerRegistry, roleRegistry));
+          app.route(
+            r.prefix,
+            withRouteAuth(r.app, r.id, refinerRegistry, roleRegistry, this.log),
+          );
         } else {
           if (r.auth === "token") app.use(`${r.prefix.replace(/\/$/, "")}/*`, tokenGate);
           app.route(r.prefix, r.app);
