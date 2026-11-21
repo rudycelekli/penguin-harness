@@ -67,7 +67,7 @@ export interface AgentsRouteDeps {
   workbenches: Pick<Workbenches, "releaseAgent">;
   /** Users' unsent drafts, which go with the Agent's Sessions. */
   drafts: Pick<UserDraftsStore, "deleteByAgent">;
-  /** Issues the created Agent's auth session (the create response carries the raw token once). */
+  /** The Agent auth service: initializes, queries, updates, and revokes the Agent's role grant. */
   agentAuth: AgentAuth;
 }
 
@@ -159,9 +159,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       // The creator brings the plugins' server modules along (PRFC-0031).
       actor: { userId: c.var.user.userId, isAdmin: c.var.user.isAdmin },
     });
-    // The Agent's auth session, issued at creation: the raw token leaves here once, in the
-    // create response — the owner passes it to the Agent; the row keeps only its hash.
-    const session = deps.agentAuth.issueSession(projectId, agentId, new Date());
+    deps.agentAuth.issueSession(projectId, agentId, new Date());
     const agent: AgentSummary = {
       ...item,
       activeSessionCount: 0,
@@ -170,18 +168,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       // A new Agent's API is off until its owner turns it on.
       apiEnabled: false,
     };
-    return c.json(
-      {
-        agent,
-        authSession: {
-          token: session.token,
-          expiresAt: session.expiresAt,
-          generation: session.generation,
-          role: session.role,
-        },
-      } satisfies AgentCreateResponse,
-      201,
-    );
+    return c.json({ agent } satisfies AgentCreateResponse, 201);
   });
 
   app.delete("/:agentId", async (c) => {
