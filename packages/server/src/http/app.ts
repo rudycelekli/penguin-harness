@@ -32,6 +32,13 @@ import type { Errors } from "@prismshadow/penguin-library-observability";
 import type { Settings } from "@prismshadow/penguin-library-setting";
 import type { AgentAuth } from "../mechanisms/agent-auth.js";
 import { normalizeRouteId, resolveHttpRouteId } from "../auth/agent-roles.js";
+import {
+  AuthRefinerRegistry,
+  type AuthRefiner,
+  type AuthRefinerAction,
+  type AuthRefinerContext,
+  type AuthRefinerInput,
+} from "../auth/auth-refiners.js";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -91,6 +98,13 @@ export interface HttpSlots {
     Opaque<"Hono", Hono<AppEnv>>
   >;
   /**
+   * An auth refiner (`<roleOrRoute>@<refinerId>`) contributed by a component or plugin.
+   * `scope` declares the route IDs, role node names, or domain prefixes (e.g. `["agent."]`)
+   * this refiner matches, avoiding middleware scans across unrelated actions.
+   */
+  authRefiners: Slot<
+    { scope: readonly string[] },
+    Opaque<"AuthRefiner", AuthRefiner>
    * A WebSocket endpoint: the upgrades whose path `prefix` covers (that path, or below it;
    * `:name` segments match any one segment) are handed to the code half. `auth: "user"` has the
    * host check the handshake's Origin and session cookie first and hand the endpoint the user;
@@ -100,8 +114,7 @@ export interface HttpSlots {
    */
   upgrades: Slot<
     { prefix: string; auth: "none" | "user" },
-    Opaque<"WebSocketUpgrade", WebSocketUpgrade>
-  >;
+    Opaque<"WebSocketUpgrade", WebSocketUpgrade>  >;
 }
 
 /**
@@ -133,10 +146,16 @@ export function endpointOf(
 }
 
 /**
- * Checks whether an Agent-authenticated request is granted the matched route's `id`, that
- * `:projectId` matches the Agent's own project, and that cross-Agent writes require `crossAgent`.
+ * Checks whether an Agent-authenticated request is granted the matched route's `id`,
+ * evaluates any `<roleOrRoute>@<refinerId>` refiners bound to that route, and enforces
+ * project and cross-Agent isolation.
  */
-function checkRouteAuth(c: Context<AppEnv>, routeId: string, groupId?: string): void {
+async function checkRouteAuth(
+  c: Context<AppEnv>,
+  routeId: string,
+  groupId: string | undefined,
+  refinerRegistry: AuthRefinerRegistry,
+): Promise<void> {
   const agentAuth = (c.var as AppEnv["Variables"]).agentAuth;
   if (agentAuth === undefined) return;
   const { grant } = agentAuth;
@@ -167,6 +186,34 @@ function checkRouteAuth(c: Context<AppEnv>, routeId: string, groupId?: string): 
       `Agent session for project "${agentAuth.projectId}" cannot access project "${routeProjectId}".`,
     );
   }
+
+  const refinerIds =
+    grant.routeRefiners?.[normalized] ??
+    grant.routeRefiners?.[routeId] ??
+    (normalizedGroup !== undefined ? grant.routeRefiners?.[normalizedGroup] : undefined);
+  if (!grant.allEndpoints && refinerIds !== undefined && refinerIds.length > 0) {
+    const rawParams = (c.req.param() ?? {}) as Record<string, string>;
+    const refinerCtx: AuthRefinerContext = {
+      projectId: agentAuth.projectId,
+      agentId: agentAuth.agentId,
+      role: grant.role,
+      generation: grant.generation,
+      ...(agentAuth.askApproval !== undefined ? { askApproval: agentAuth.askApproval } : {}),
+    };
+    const action: AuthRefinerAction = {
+      routeId: normalized,
+      ...(normalizedGroup !== undefined ? { groupId: normalizedGroup } : {}),
+      method: c.req.method.toUpperCase(),
+      path: c.req.path,
+      params: rawParams,
+    };
+    const evalResult = await refinerRegistry.evaluate(refinerIds, refinerCtx, action);
+    if (!evalResult.ok) {
+      throw new HttpError(403, evalResult.code, evalResult.message);
+    }
+    return;
+  }
+
   const routeAgentId = c.req.param("agentId");
   if (
     !grant.allEndpoints &&
@@ -184,7 +231,11 @@ function checkRouteAuth(c: Context<AppEnv>, routeId: string, groupId?: string): 
   }
 }
 
-function withRouteAuth(source: Hono<AppEnv>, groupId: string): Hono<AppEnv> {
+function withRouteAuth(
+  source: Hono<AppEnv>,
+  groupId: string,
+  refinerRegistry: AuthRefinerRegistry,
+): Hono<AppEnv> {
   const normalizedGroup = normalizeRouteId(groupId);
   if (normalizedGroup === "session.forward") return source;
   const gated = new Hono<AppEnv>();
@@ -204,7 +255,7 @@ function withRouteAuth(source: Hono<AppEnv>, groupId: string): Hono<AppEnv> {
     }
     const resolvedId = resolveHttpRouteId(normalizedGroup, route.method, route.path);
     gated.on(route.method, route.path, async (c, next) => {
-      checkRouteAuth(c, resolvedId, normalizedGroup);
+      await checkRouteAuth(c, resolvedId, normalizedGroup, refinerRegistry);
       return route.handler(c, next);
     });
   }
@@ -227,6 +278,8 @@ export class HttpModule {
   @Use() private readonly access!: Access;
   @Use() private readonly projects!: Projects;
   @Use() private readonly users!: Users;
+  /** Optional priority-ordered refiner list (`[AuthMyRefiner, AuthWithAskRefiner, AuthSelfRefiner]`). */
+  private readonly refiners?: readonly AuthRefinerInput[];
   @Provide() http!: Http;
   setup({ contributions }: ClassCtx) {
     const routes = [...(contributions.routes ?? [])]
@@ -249,6 +302,11 @@ export class HttpModule {
         code: c.code as WebSocketUpgrade,
       })),
       { auth: this.auth, rule: originRule(this.config), log: (line) => this.log.line(line) },
+    );
+
+    const refinerRegistry = new AuthRefinerRegistry(
+      this.refiners,
+      contributions.authRefiners ?? [],
     );
 
     const agentAuthHook =
@@ -275,21 +333,26 @@ export class HttpModule {
       authMiddleware(this.auth, this.config.trustProxy, {
         ...(agentAuthHook !== undefined ? { agentAuth: agentAuthHook } : {}),
       }),
+      refinerRegistry,
     );
     const asUser = new Map<string, Hono<AppEnv>>();
     const enteredAs = (userId: string): Hono<AppEnv> => {
       let app = asUser.get(userId);
       if (app === undefined) {
-        app = this.assemble(routes, async (c, next) => {
-          const user = this.users.findById(userId);
-          if (user === null) throw new HttpError(401, "unauthorized", "Unknown user.");
-          c.set("user", user);
-          // The handshake does not say how the cookie behind it was minted, so the most
-          // demanding kind is assumed; the routes whose answer turns on the kind never reach
-          // here, the socket declines them for HTTP (api/types.ts sessionKindPath).
-          c.set("sessionVia", "password");
-          await next();
-        });
+        app = this.assemble(
+          routes,
+          async (c, next) => {
+            const user = this.users.findById(userId);
+            if (user === null) throw new HttpError(401, "unauthorized", "Unknown user.");
+            c.set("user", user);
+            // The handshake does not say how the cookie behind it was minted, so the most
+            // demanding kind is assumed; the routes whose answer turns on the kind never reach
+            // here, the socket declines them for HTTP (api/types.ts sessionKindPath).
+            c.set("sessionVia", "password");
+            await next();
+          },
+          refinerRegistry,
+        );
         asUser.set(userId, app);
       }
       return app;
@@ -320,6 +383,7 @@ export class HttpModule {
       app: Hono<AppEnv>;
     }[],
     gate: MiddlewareHandler<AppEnv>,
+    refinerRegistry: AuthRefinerRegistry,
   ): Hono<AppEnv> {
     const errors = this.errors;
     const access = this.access;
@@ -400,7 +464,7 @@ export class HttpModule {
         // method, so another group's wider gate under the same prefix is not crossed.
         if (r.auth === "user") {
           app.on(r.method, r.prefix, once, async (c, next) => {
-            checkRouteAuth(c, r.id);
+            await checkRouteAuth(c, r.id, undefined, refinerRegistry);
             await next();
           });
         }
@@ -411,7 +475,7 @@ export class HttpModule {
         // Agent-role check wraps the group's own handlers (withRouteAuth).
         if (r.auth === "user") {
           app.use(`${r.prefix.replace(/\/$/, "")}/*`, once);
-          app.route(r.prefix, withRouteAuth(r.app, r.id));
+          app.route(r.prefix, withRouteAuth(r.app, r.id, refinerRegistry));
         } else {
           if (r.auth === "token") app.use(`${r.prefix.replace(/\/$/, "")}/*`, tokenGate);
           app.route(r.prefix, r.app);
