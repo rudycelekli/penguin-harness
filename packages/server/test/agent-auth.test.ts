@@ -124,8 +124,10 @@ describe("the agent role tree and route catalog", () => {
     const maintainerIds = new Set(expandRoleGrant("system-maintainer").apiIds);
     for (const id of readonlyIds) expect(generalIds.has(id)).toBe(true);
     for (const id of generalIds) expect(maintainerIds.has(id)).toBe(true);
-    expect(expandRoleGrant("general").crossAgent).toBe(false);
-    expect(expandRoleGrant("system-maintainer").crossAgent).toBe(true);
+    expect(expandRoleGrant("general").routeRefiners["agent.config.update"]).toEqual(["self"]);
+    expect(
+      expandRoleGrant("system-maintainer").routeRefiners["agent.config.update"],
+    ).toBeUndefined();
     expect(expandRoleGrant("system-maintainer").agentApi).toBe(true);
   });
 
@@ -207,9 +209,15 @@ describe("the agent auth service", () => {
     expect(ctx.grant.role).toBe("session.read");
     expect(ctx.grant.generation).toBe(1);
     expect(ctx.grant.allEndpoints).toBe(false);
+    expect(ctx.grant.apiIds).toBeInstanceOf(Set);
+    // Repeated lookups at the same generation return the cached grant and Set instance.
+    const cachedGrant = auth.currentGrant("p", "a")!;
+    expect(auth.currentGrant("p", "a")).toBe(cachedGrant);
+    expect(auth.authenticate(token, NOW)!.grant.apiIds).toBe(cachedGrant.apiIds);
 
-    // The admin role spans every endpoint.
+    // The admin role spans every endpoint, and bumping generation invalidates the cached Set.
     repo.bumpGeneration("p", "a", "admin", [], 2);
+    expect(auth.currentGrant("p", "a")).not.toBe(cachedGrant);
     expect(auth.allowsEndpoint("p", "a", "admin.users.delete")).toBe(true);
   });
 
@@ -373,8 +381,8 @@ describe("the agent auth service", () => {
     const rCreateDenied = await req("POST", "/api/projects/p1/agents/a1/sessions", token);
     expect(rCreateDenied.status).toBe(403);
 
-    // Group sub-route resolution: general grants agent.config.get and agent.config.update on self (a1),
-    // but refuses mutating another agent (a2) without crossAgent.
+    // Group sub-route resolution: general grants agent.config.get and agent.config.update@self on self (a1),
+    // while @self refuses mutating another agent (a2).
     repo.bumpGeneration("p1", "a1", "general", [], 2);
     const rSelfPut = await req("PUT", "/api/projects/p1/agents/a1/config", token);
     expect(rSelfPut.status).toBe(200);
@@ -385,7 +393,7 @@ describe("the agent auth service", () => {
     const rOtherAgentPut = await req("PUT", "/api/projects/p1/agents/a2/config", token);
     expect(rOtherAgentPut.status).toBe(403);
 
-    // system-maintainer has crossAgent + agentApi: passes both cross-agent PUT and requireHuman POST
+    // system-maintainer grants unconditional agent.maintain + agentApi: passes both cross-agent PUT and requireHuman POST
     repo.bumpGeneration("p1", "a1", "system-maintainer", [], 3);
     const rMaintainerOtherPut = await req("PUT", "/api/projects/p1/agents/a2/config", token);
     expect(rMaintainerOtherPut.status).toBe(200);
@@ -809,7 +817,6 @@ describe("extensible role registry and HttpModule.roles / HttpModule.routes slot
             data: {
               children: ["myPlugin.maintain"],
               routes: ["myPlugin.items.delete"],
-              flags: { crossAgent: true },
             },
           },
         ],

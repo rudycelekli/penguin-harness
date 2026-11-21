@@ -209,7 +209,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       role: current?.role ?? DEFAULT_AGENT_AUTH_ROLE,
       generation: current?.generation ?? 0,
       apiIds: current?.apiIds ?? [],
-      effectiveApiCount: grant?.apiIds.length ?? 0,
+      effectiveApiCount: grant?.apiIds.size ?? 0,
       allEndpoints: grant?.allEndpoints ?? false,
     });
   });
@@ -235,7 +235,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       role: updated.role,
       generation: updated.generation,
       apiIds: updated.apiIds,
-      effectiveApiCount: grant?.apiIds.length ?? 0,
+      effectiveApiCount: grant?.apiIds.size ?? 0,
       allEndpoints: grant?.allEndpoints ?? false,
     });
   });

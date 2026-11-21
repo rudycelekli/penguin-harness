@@ -590,8 +590,6 @@ export interface RoleFlags {
   allEndpoints?: boolean;
   /** true = reaches human-gated endpoints (`requireHuman`) such as session creation/deletion and model key management. */
   agentApi?: boolean;
-  /** true = may mutate Agent-scoped resources of other Agents in the same Project. */
-  crossAgent?: boolean;
 }
 
 export interface RoleNode {
@@ -674,8 +672,7 @@ export function parseRefinedGrant(spec: string): RefinedGrantRef {
 export interface ExpandedRoleGrant {
   allEndpoints: boolean;
   agentApi: boolean;
-  crossAgent: boolean;
-  apiIds: string[];
+  apiIds: ReadonlySet<string>;
   routeRefiners: Record<string, string[]>;
 }
 
@@ -1391,7 +1388,6 @@ const BUILTIN_ROLE_TREE: Readonly<Record<BuiltinAgentAuthRole, RoleNode>> = {
     ],
     flags: {
       agentApi: true,
-      crossAgent: true,
     },
   },
 
@@ -1411,7 +1407,6 @@ const BUILTIN_ROLE_TREE: Readonly<Record<BuiltinAgentAuthRole, RoleNode>> = {
     ],
     flags: {
       allEndpoints: true,
-      crossAgent: true,
     },
   },
 
@@ -1420,7 +1415,6 @@ const BUILTIN_ROLE_TREE: Readonly<Record<BuiltinAgentAuthRole, RoleNode>> = {
     flags: {
       allEndpoints: true,
       agentApi: true,
-      crossAgent: true,
     },
   },
 };
@@ -1430,6 +1424,15 @@ interface MutableRoleNode {
   routes: string[];
   flags: RoleFlags;
 }
+
+interface CompiledGrantMeta {
+  readonly unconditionalSet: ReadonlySet<string>;
+  readonly routeRefinerMap: ReadonlyMap<string, readonly string[]>;
+  readonly wildcardPatterns: readonly string[];
+  readonly wildcardRefiners: ReadonlyArray<readonly [string, readonly string[]]>;
+}
+
+const COMPILED_GRANT_META = new WeakMap<ReadonlySet<string>, CompiledGrantMeta>();
 
 /**
  * Checks whether a route grant pattern (exact ID, `"*"`, `"<prefix>.*"`, or segment glob like
@@ -1458,17 +1461,46 @@ export function routePatternMatches(
 
 /**
  * Checks whether `grantedApiIds` (from an `AgentAuthGrant`) authorizes `routeId` (or its
- * enclosing `groupId`), supporting both exact route IDs and wildcard patterns (`<prefix>.*`).
+ * enclosing `groupId`), using O(1) `Set.has` lookup on cached generation sets and falling back
+ * to wildcard patterns (`<prefix>.*`) only when present.
  */
 export function matchesRouteGrant(
-  grantedApiIds: readonly string[],
+  grantedApiIds: ReadonlySet<string> | readonly string[],
   routeId: string,
   groupId?: string,
   registry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
 ): boolean {
   const normalized = registry.normalizeRouteId(routeId);
   const normalizedGroup = groupId !== undefined ? registry.normalizeRouteId(groupId) : undefined;
-  for (const granted of grantedApiIds) {
+  if (!Array.isArray(grantedApiIds)) {
+    const grantedSet = grantedApiIds as ReadonlySet<string>;
+    if (grantedSet.has(normalized) || grantedSet.has(routeId)) {
+      return true;
+    }
+    if (
+      normalizedGroup !== undefined &&
+      (grantedSet.has(normalizedGroup) || (groupId !== undefined && grantedSet.has(groupId)))
+    ) {
+      return true;
+    }
+    const meta = COMPILED_GRANT_META.get(grantedSet);
+    const patterns = meta !== undefined ? meta.wildcardPatterns : grantedSet;
+    for (const granted of patterns) {
+      if (!granted.includes("*")) continue;
+      if (routePatternMatches(granted, normalized, registry)) {
+        return true;
+      }
+      if (
+        normalizedGroup !== undefined &&
+        routePatternMatches(granted, normalizedGroup, registry)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+  const grantedList = grantedApiIds as readonly string[];
+  for (const granted of grantedList) {
     if (
       granted === normalized ||
       granted === routeId ||
@@ -1489,17 +1521,83 @@ export function matchesRouteGrant(
 }
 
 /**
- * Resolves the list of `@<refinerId>` IDs required for `routeId` (or `groupId`) under an
- * `AgentAuthGrant`. Unconditional exact grants take precedence over refined wildcard grants.
+ * Resolves the list of `@<refinerId>` IDs required for `routeId` (or `groupId`) under a cached
+ * `grant.apiIds` set (or an explicit `routeRefiners` map). Unconditional exact grants take
+ * precedence over refined wildcard grants.
  */
 export function resolveRouteRefiners(
-  routeRefiners: Readonly<Record<string, readonly string[]>> | undefined,
-  grantedApiIds: readonly string[],
+  grantedApiIds: ReadonlySet<string>,
   routeId: string,
   groupId?: string,
-  registry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
+  registry?: RoleRegistry,
+): readonly string[] | undefined;
+export function resolveRouteRefiners(
+  routeRefiners: Readonly<Record<string, readonly string[]>> | undefined,
+  grantedApiIds: ReadonlySet<string> | readonly string[],
+  routeId: string,
+  groupId?: string,
+  registry?: RoleRegistry,
+): readonly string[] | undefined;
+export function resolveRouteRefiners(
+  grantOrRefiners:
+    | ReadonlySet<string>
+    | Readonly<Record<string, readonly string[]>>
+    | undefined,
+  routeIdOrGrantedApiIds: string | ReadonlySet<string> | readonly string[],
+  groupIdOrRouteId?: string,
+  registryOrGroupId?: RoleRegistry | string,
+  maybeRegistry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
 ): readonly string[] | undefined {
+  if (grantOrRefiners instanceof Set) {
+    const grantedSet = grantOrRefiners as ReadonlySet<string>;
+    const meta = COMPILED_GRANT_META.get(grantedSet);
+    if (meta === undefined) return undefined;
+    const routeId = routeIdOrGrantedApiIds as string;
+    const groupId = groupIdOrRouteId;
+    const registry =
+      registryOrGroupId instanceof RoleRegistry ? registryOrGroupId : DEFAULT_ROLE_REGISTRY;
+    const normalized = registry.normalizeRouteId(routeId);
+    const normalizedGroup =
+      groupId !== undefined ? registry.normalizeRouteId(groupId) : undefined;
+
+    const direct =
+      meta.routeRefinerMap.get(normalized) ??
+      meta.routeRefinerMap.get(routeId) ??
+      (normalizedGroup !== undefined ? meta.routeRefinerMap.get(normalizedGroup) : undefined);
+    if (direct !== undefined) return direct;
+
+    if (
+      meta.unconditionalSet.has(normalized) ||
+      meta.unconditionalSet.has(routeId) ||
+      (normalizedGroup !== undefined &&
+        (meta.unconditionalSet.has(normalizedGroup) ||
+          (groupId !== undefined && meta.unconditionalSet.has(groupId))))
+    ) {
+      return undefined;
+    }
+
+    if (meta.wildcardRefiners.length === 0) return undefined;
+    const matched = new Set<string>();
+    for (const [pattern, refiners] of meta.wildcardRefiners) {
+      if (
+        routePatternMatches(pattern, normalized, registry) ||
+        (normalizedGroup !== undefined && routePatternMatches(pattern, normalizedGroup, registry))
+      ) {
+        for (const r of refiners) matched.add(r);
+      }
+    }
+    return matched.size > 0 ? [...matched] : undefined;
+  }
+
+  const routeRefiners = grantOrRefiners as
+    | Readonly<Record<string, readonly string[]>>
+    | undefined;
   if (routeRefiners === undefined) return undefined;
+  const grantedApiIds = routeIdOrGrantedApiIds as ReadonlySet<string> | readonly string[];
+  const routeId = groupIdOrRouteId as string;
+  const groupId = typeof registryOrGroupId === "string" ? registryOrGroupId : undefined;
+  const registry =
+    registryOrGroupId instanceof RoleRegistry ? registryOrGroupId : maybeRegistry;
   const normalized = registry.normalizeRouteId(routeId);
   const normalizedGroup = groupId !== undefined ? registry.normalizeRouteId(groupId) : undefined;
 
@@ -1511,13 +1609,23 @@ export function resolveRouteRefiners(
       : undefined);
   if (direct !== undefined) return direct;
 
-  if (
-    grantedApiIds.includes(normalized) ||
-    grantedApiIds.includes(routeId) ||
-    (normalizedGroup !== undefined &&
-      (grantedApiIds.includes(normalizedGroup) ||
-        (groupId !== undefined && grantedApiIds.includes(groupId))))
-  ) {
+  let hasExactGrant: boolean;
+  if (Array.isArray(grantedApiIds)) {
+    const list = grantedApiIds as readonly string[];
+    hasExactGrant =
+      list.includes(normalized) ||
+      list.includes(routeId) ||
+      (normalizedGroup !== undefined &&
+        (list.includes(normalizedGroup) || (groupId !== undefined && list.includes(groupId))));
+  } else {
+    const set = grantedApiIds as ReadonlySet<string>;
+    hasExactGrant =
+      set.has(normalized) ||
+      set.has(routeId) ||
+      (normalizedGroup !== undefined &&
+        (set.has(normalizedGroup) || (groupId !== undefined && set.has(groupId))));
+  }
+  if (hasExactGrant) {
     return undefined;
   }
 
@@ -1550,6 +1658,8 @@ export class RoleRegistry {
   private readonly allRoutesList: string[] = [];
   private readonly allRoutesSet = new Set<string>();
   private readonly prefixAliases: Record<string, string> = {};
+  private readonly baseRoleCache = new Map<string, ExpandedRoleGrant>();
+  private registryVersion = 0;
 
   constructor() {
     for (const [from, to] of Object.entries(BUILTIN_ROUTE_PREFIX_ALIASES)) {
@@ -1575,6 +1685,16 @@ export class RoleRegistry {
       };
       this.roleList.push(roleId);
     }
+  }
+
+  /** Monotonic version incremented whenever roles, routes, or aliases are registered. */
+  get version(): number {
+    return this.registryVersion;
+  }
+
+  private bumpVersion(): void {
+    this.registryVersion++;
+    this.baseRoleCache.clear();
   }
 
   /** Live view of the role tree in this registry. */
@@ -1624,6 +1744,7 @@ export class RoleRegistry {
     const to = toPrefix.trim().replace(/^penguin\./, "");
     if (from !== "" && to !== "") {
       this.prefixAliases[from] = to;
+      this.bumpVersion();
     }
   }
 
@@ -1727,7 +1848,6 @@ export class RoleRegistry {
     if (contribution.flags !== undefined) {
       if (contribution.flags.allEndpoints) node.flags.allEndpoints = true;
       if (contribution.flags.agentApi) node.flags.agentApi = true;
-      if (contribution.flags.crossAgent) node.flags.crossAgent = true;
     }
 
     if (contribution.parents !== undefined) {
@@ -1742,6 +1862,8 @@ export class RoleRegistry {
         }
       }
     }
+
+    this.bumpVersion();
   }
 
   /**
@@ -1797,6 +1919,7 @@ export class RoleRegistry {
     if (rawGroup !== normGroup) {
       this.groupEndpoints[rawGroup] = merged;
     }
+    this.bumpVersion();
   }
 
   /**
@@ -1845,6 +1968,7 @@ export class RoleRegistry {
         }
       }
     }
+    this.bumpVersion();
   }
 
   /**
@@ -1874,19 +1998,29 @@ export class RoleRegistry {
   /**
    * Expands a primary `role` (which may carry `<role>@<refinerId>`) and optional `extraGrants`
    * (additional role nodes, route IDs, or `<prefix>.*` wildcards, with optional `@<refinerId>`)
-   * into the effective route set, capability flags, and per-route refiner map (`routeRefiners`).
+   * into the effective route `Set`, capability flags, and pre-compiled refiner metadata.
    */
   expandRoleGrant(role: string, extraGrants: readonly string[] = []): ExpandedRoleGrant {
+    if (extraGrants.length === 0) {
+      const cached = this.baseRoleCache.get(role);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const visited = new Set<string>();
     const allRoutes = new Set<string>();
     const unconditionalRoutes = new Set<string>();
     const refinedRouteMap = new Map<string, Set<string>>();
+    const wildcardPatternSet = new Set<string>();
     let allEndpoints = false;
     let agentApi = false;
-    let crossAgent = false;
 
     const recordSingleRoute = (normalized: string, refinerId: string | null): void => {
       allRoutes.add(normalized);
+      if (normalized.includes("*")) {
+        wildcardPatternSet.add(normalized);
+      }
       if (refinerId === null) {
         unconditionalRoutes.add(normalized);
       } else {
@@ -1929,7 +2063,6 @@ export class RoleRegistry {
       if (effectiveRefiner === null) {
         if (node.flags.allEndpoints) allEndpoints = true;
         if (node.flags.agentApi) agentApi = true;
-        if (node.flags.crossAgent) crossAgent = true;
       }
       for (const routeSpec of node.routes) {
         const parsed = parseRefinedGrant(routeSpec);
@@ -1964,21 +2097,38 @@ export class RoleRegistry {
     }
 
     const routeRefiners: Record<string, string[]> = {};
+    const routeRefinerMap = new Map<string, readonly string[]>();
+    const wildcardRefiners: Array<readonly [string, readonly string[]]> = [];
     if (!allEndpoints) {
       for (const [routeId, refiners] of refinedRouteMap.entries()) {
         if (!unconditionalRoutes.has(routeId) && refiners.size > 0) {
-          routeRefiners[routeId] = [...refiners];
+          const list = [...refiners];
+          routeRefiners[routeId] = list;
+          routeRefinerMap.set(routeId, list);
+          if (routeId.includes("*")) {
+            wildcardRefiners.push([routeId, list]);
+          }
         }
       }
     }
 
-    return {
+    COMPILED_GRANT_META.set(allRoutes, {
+      unconditionalSet: unconditionalRoutes,
+      routeRefinerMap,
+      wildcardPatterns: [...wildcardPatternSet],
+      wildcardRefiners,
+    });
+
+    const result: ExpandedRoleGrant = {
       allEndpoints,
       agentApi,
-      crossAgent,
-      apiIds: [...allRoutes],
+      apiIds: allRoutes,
       routeRefiners,
     };
+    if (extraGrants.length === 0) {
+      this.baseRoleCache.set(role, result);
+    }
+    return result;
   }
 
   /** Whether the role reaches every route without its granted set naming it. */
@@ -1989,11 +2139,6 @@ export class RoleRegistry {
   /** Whether the role carries the Agent's own API settings and keys (human-gated endpoints). */
   roleHasAgentApi(role: string): boolean {
     return this.expandRoleGrant(role).agentApi;
-  }
-
-  /** Whether the role may mutate Agent-scoped resources of other Agents in the same Project. */
-  roleCanManageOtherAgents(role: string): boolean {
-    return this.expandRoleGrant(role).crossAgent;
   }
 }
 
@@ -2074,12 +2219,4 @@ export function roleHasAgentApi(
   registry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
 ): boolean {
   return registry.roleHasAgentApi(role);
-}
-
-/** Whether the role may mutate Agent-scoped resources of other Agents in the same Project. */
-export function roleCanManageOtherAgents(
-  role: string,
-  registry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
-): boolean {
-  return registry.roleCanManageOtherAgents(role);
 }

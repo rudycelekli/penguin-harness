@@ -152,11 +152,19 @@ export class AgentAuthService implements AgentAuth {
   }
 }
 
-/** Derives the grant from the Agent's CURRENT generation row — the one reader of the pair. */
+interface CachedAgentGrant {
+  readonly generation: number;
+  readonly registryVersion: number;
+  readonly role: AgentAuthRole;
+  readonly grant: AgentAuthGrant;
+}
+
+/** Derives and caches the grant from the Agent's CURRENT generation row — the one reader of the pair. */
 @Component()
 export class AgentAuthPermissionProvider implements AgentAuthPermissions {
   @Use() private readonly authRoleSessions!: AuthRoleSessions;
   private readonly roleRegistry = new RoleRegistry();
+  private readonly grantCache = new Map<string, CachedAgentGrant>();
 
   setup({ contributions }: ClassCtx): void {
     const roles = contributions.roles as
@@ -176,17 +184,36 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
   }
 
   grantOf(projectId: string, agentId: string): AgentAuthGrant | null {
+    const cacheKey = `${projectId}\0${agentId}`;
     const current = this.authRoleSessions.generationOf(projectId, agentId);
-    if (current === null) return null;
+    if (current === null) {
+      this.grantCache.delete(cacheKey);
+      return null;
+    }
+    const registryVersion = this.roleRegistry.version;
+    const cached = this.grantCache.get(cacheKey);
+    if (
+      cached !== undefined &&
+      cached.generation === current.generation &&
+      cached.registryVersion === registryVersion &&
+      cached.role === current.role
+    ) {
+      return cached.grant;
+    }
     const expanded = this.roleRegistry.expandRoleGrant(current.role, current.apiIds);
-    return {
+    const grant: AgentAuthGrant = {
       role: current.role,
       generation: current.generation,
       allEndpoints: expanded.allEndpoints,
       agentApi: expanded.agentApi,
-      crossAgent: expanded.crossAgent,
       apiIds: expanded.apiIds,
-      routeRefiners: expanded.routeRefiners,
     };
+    this.grantCache.set(cacheKey, {
+      generation: current.generation,
+      registryVersion,
+      role: current.role,
+      grant,
+    });
+    return grant;
   }
 }

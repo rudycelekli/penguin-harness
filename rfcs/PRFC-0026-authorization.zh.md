@@ -74,7 +74,7 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 - **复合角色节点**：顶层预设角色（`none`、`readonly`、`general`、`system-maintainer`、`admin`、`full-permissions`）作为同一棵树上的高层节点，通过 `children` 数组组合各域的角色节点。
 - **权限精化器（`<roleOrRoute>@<refinerId>`）**：角色节点引用或额外授权项可以附加 `@<refinerId>` 后缀（例如 `agent.maintain@self`、`agent.maintain@withAsk`），将对应写路由绑定到具名的 `AuthRefiner` 组件上执行上下文校验。
 
-每个受控授权会话绑定一个角色标识与一份当前授权，在请求时由 `expandRoleGrant(role, extraGrants)` 递归展开角色树，计算出有效路由 `id` 集合（`apiIds`）、每条路由绑定的精化器列表（`routeRefiners`）以及正交能力标志（`allEndpoints`、`agentApi`、`crossAgent`）。
+每个受控授权会话绑定一个角色标识与一份按代际（`generation`）缓存的当前授权，由 `expandRoleGrant(role, extraGrants)` 展开角色树，构建有效路由 `id` 哈希集合（`apiIds: ReadonlySet<string>`）、预编译的路由精化器映射与正交能力标志（`allEndpoints`、`agentApi`）。
 
 ## Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
@@ -135,14 +135,14 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 
 在此基础上，六个顶层复合角色通过组合域角色节点与正交能力标志构成标准权限梯度：
 
-| 复合角色 | 包含的子角色节点（`children`） | `allEndpoints` | `agentApi`（通过 `requireHuman`） | `crossAgent`（跨 Agent 写） |
-| --- | --- | --- | --- | --- |
-| `none` | `[]` | `false` | `false` | `false` |
-| `readonly` | 全部业务域的 `*.read` 节点 | `false` | `false` | `false` |
-| `general`（默认） | `readonly` + `session.maintain`、`workspace.maintain`、`agent.maintain@self`、`memory.maintain@self`、`schedule.maintain@self`、`workbench.maintain@self`、`org.maintain`、`browser.maintain` | `false` | `false` | `false` |
-| `system-maintainer` | `general` + `agent.maintain`、`memory.maintain`、`schedule.maintain`、`workbench.maintain`、`skill.maintain`、`plugin.maintain`、`model.maintain`、`vault.maintain`、`trace.maintain`、`benchmark.maintain`、`machine.maintain`、`agents.messaging.maintain`、`messaging.maintain` | `false` | `true` | `true` |
-| `admin` | `system-maintainer` + 全部业务域的 `*.all` 节点 | `true` | `false` | `true` |
-| `full-permissions` | `["admin"]` | `true` | `true` | `true` |
+| 复合角色 | 包含的子角色节点（`children`） | `allEndpoints` | `agentApi`（通过 `requireHuman`） |
+| --- | --- | --- | --- |
+| `none` | `[]` | `false` | `false` |
+| `readonly` | 全部业务域的 `*.read` 节点 | `false` | `false` |
+| `general`（默认） | `readonly` + `session.maintain`、`workspace.maintain`、`agent.maintain@self`、`memory.maintain@self`、`schedule.maintain@self`、`workbench.maintain@self`、`org.maintain`、`browser.maintain` | `false` | `false` |
+| `system-maintainer` | `general` + `agent.maintain`、`memory.maintain`、`schedule.maintain`、`workbench.maintain`、`skill.maintain`、`plugin.maintain`、`model.maintain`、`vault.maintain`、`trace.maintain`、`benchmark.maintain`、`machine.maintain`、`agents.messaging.maintain`、`messaging.maintain` | `false` | `true` |
+| `admin` | `system-maintainer` + 全部业务域的 `*.all` 节点 | `true` | `false` |
+| `full-permissions` | `["admin"]` | `true` | `true` |
 
 ### 权限精化器（`<roleOrRoute>@<refinerId>`）与优先级覆盖
 
@@ -179,7 +179,7 @@ export class AuthSelfRefiner {
 - **会话记录**：仅落盘会话令牌的 SHA-256 哈希（明文令牌仅在签发时返回一次）、关联主体标识、签发时的角色与代数（`generation`）、创建时间、过期时间及最近使用时间。
 - **权限代际记录**：按主体维护当前代数 `generation`、当前角色 `role` 以及显式授予的路由 ID 列表 `apiIds`。
 
-每次请求携带会话令牌到达时，鉴权层在验证会话未过期后，读取该主体的当前权限代际并实时展开角色树，派生出有效授权集（`{ role, generation, allEndpoints, apiIds, routeRefiners }`）。调整主体的角色或额外路由授权时，只需递增代数（`bumpGeneration`），已签发的活跃令牌无需重新签发即可在下一次请求时按新权限生效；当主体被归档或注销时，可一次性吊销其全部活跃会话与代际记录。
+每次请求携带会话令牌到达时，鉴权层在验证会话未过期后读取该主体的当前权限代际，并按 `generation` 缓存展开后的有效授权集（`{ role, generation, allEndpoints, apiIds }`，其中 `apiIds` 为 `ReadonlySet<string>`）。当 `generation` 未发生变动时，请求直接复用缓存的 `Set` 实例做 $O(1)$ 查找；调整主体的角色或额外路由授权时，递增代数（`bumpGeneration`）即在下一次请求时触发重构建并按新权限生效；当主体被归档或注销时，可一次性吊销其全部活跃会话与代际记录。
 
 ### HTTP 鉴权与路由级授权流程
 
@@ -191,9 +191,9 @@ export class AuthSelfRefiner {
 2. **路由级授权（Route Authorization）**：
    - 对人类用户请求：按既有的用户与管理员规则放行。
    - 对 Agent 请求（`c.var.agentAuth` 存在）：在路由入口执行 `checkRouteAuth(c, route.id)`：
-     - 校验端点授权：要求 `grant.allEndpoints === true` 或 `grant.apiIds.includes(routeId)`，未命中时返回 `403 permission_required`。
+     - 校验端点授权：要求 `grant.allEndpoints === true` 或 `grant.apiIds.has(routeId)`（及通配模式匹配），未命中时返回 `403 permission_required`。
      - 校验项目隔离：当 `grant.allEndpoints === false` 且路由包含 `:projectId` 参数时，要求 `:projectId === agentAuth.projectId`，跨项目访问返回 `403 permission_required`。
-     - 校验跨 Agent 写隔离：当 `grant.allEndpoints === false` 且 `grant.crossAgent !== true` 时，若路由带有 `:agentId` 参数且 `:agentId !== agentAuth.agentId`，除只读 `GET` 请求与跨 Agent 发起会话（`session.create`）外，其余修改其他 Agent 的写请求返回 `403 permission_required`。
+     - 校验权限精化器（`AuthRefiner`）：若该路由绑定了精化器（如 `<domain>.maintain@self`），按序执行对应的 `AuthRefiner.authenticate(ctx, action, request)`。
      - 校验人类专属门（`requireHuman`）：仅当 `agentAuth.agentApi === true`（如 `system-maintainer` 或 `full-permissions` 角色）时放行，其余返回 `403 human_required`。
 
 ### CLI 表面的边界划分

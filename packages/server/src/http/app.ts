@@ -228,7 +228,6 @@ async function checkRouteAuth(
   }
 
   const refinerIds = resolveRouteRefiners(
-    grant.routeRefiners,
     grant.apiIds,
     normalized,
     normalizedGroup,
@@ -257,22 +256,6 @@ async function checkRouteAuth(
     );
     if (!evalResult.ok) {
       throw new HttpError(403, evalResult.code, evalResult.message);
-    }
-  } else {
-    const routeAgentId = c.req.param("agentId");
-    if (
-      !grant.allEndpoints &&
-      grant.crossAgent !== true &&
-      routeAgentId !== undefined &&
-      routeAgentId !== agentAuth.agentId &&
-      c.req.method !== "GET" &&
-      normalized !== "session.create"
-    ) {
-      throw new HttpError(
-        403,
-        "permission_required",
-        `Agent session for agent "${agentAuth.agentId}" cannot modify agent "${routeAgentId}".`,
-      );
     }
   }
 
@@ -414,28 +397,45 @@ export class HttpModule {
       roleRegistry,
     );
 
+    const fallbackGrantCache = new Map<
+      string,
+      { generation: number; role: string; ctx: NonNullable<ReturnType<AgentAuth["authenticate"]>> }
+    >();
     const agentAuthHook =
       this.agentAuth !== undefined
         ? {
             authenticate: (bearer: string, now: Date) => {
               const ctx = this.agentAuth.authenticate(bearer, now);
               if (ctx === null || !hasCustomRolesOrRoutes || agentAuthSynced) return ctx;
-              const reExpanded = roleRegistry.expandRoleGrant(ctx.grant.role, ctx.grant.apiIds);
-              return {
+              const cacheKey = `${ctx.projectId}\0${ctx.agentId}`;
+              const cached = fallbackGrantCache.get(cacheKey);
+              if (
+                cached !== undefined &&
+                cached.generation === ctx.grant.generation &&
+                cached.role === ctx.grant.role
+              ) {
+                return cached.ctx;
+              }
+              const reExpanded = roleRegistry.expandRoleGrant(
+                ctx.grant.role,
+                [...ctx.grant.apiIds],
+              );
+              const nextCtx = {
                 ...ctx,
                 agentApi: Boolean(ctx.agentApi || reExpanded.agentApi),
                 grant: {
                   ...ctx.grant,
                   allEndpoints: Boolean(ctx.grant.allEndpoints || reExpanded.allEndpoints),
                   agentApi: Boolean(ctx.grant.agentApi || reExpanded.agentApi),
-                  crossAgent: Boolean(ctx.grant.crossAgent || reExpanded.crossAgent),
                   apiIds: reExpanded.apiIds,
-                  routeRefiners: {
-                    ...ctx.grant.routeRefiners,
-                    ...reExpanded.routeRefiners,
-                  },
                 },
               };
+              fallbackGrantCache.set(cacheKey, {
+                generation: ctx.grant.generation,
+                role: ctx.grant.role,
+                ctx: nextCtx,
+              });
+              return nextCtx;
             },
             resolveUser: (projectId: string) => {
               const project = this.projects?.findById(projectId);

@@ -74,7 +74,7 @@ Role presets are organized as a declarative directed acyclic role tree (`ROLE_TR
 - **Composite role nodes**: Standing personas (`none`, `readonly`, `general`, `system-maintainer`, `admin`, `full-permissions`) sit higher in the same tree, composing domain role nodes through their `children` array.
 - **Auth Refiners (`<roleOrRoute>@<refinerId>`)**: Any role reference or extra grant entry may carry an `@<refinerId>` suffix (for example `agent.maintain@self` or `agent.maintain@withAsk`), binding the granted write routes to a named `AuthRefiner` component.
 
-Each role-bound session binds a role identifier and a current grant. On each request, `expandRoleGrant(role, extraGrants)` walks the role tree to compute the effective set of route `id`s (`apiIds`), the per-route refiner bindings (`routeRefiners`), and the orthogonal capability flags (`allEndpoints`, `agentApi`, `crossAgent`).
+Each role-bound session binds a role identifier and a generation-cached grant. `expandRoleGrant(role, extraGrants)` walks the role tree to build the effective `ReadonlySet<string>` of route `id`s (`apiIds`), pre-compiled refiner bindings, and the orthogonal capability flags (`allEndpoints`, `agentApi`).
 
 ## Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
@@ -135,14 +135,14 @@ Every functional domain follows a three-tier progression:
 
 Six composite roles compose these domain nodes and capability flags into standing personas:
 
-| Composite Role | Child Roles (`children`) | `allEndpoints` | `agentApi` (passes `requireHuman`) | `crossAgent` (cross-Agent writes) |
-| --- | --- | --- | --- | --- |
-| `none` | `[]` | `false` | `false` | `false` |
-| `readonly` | All domain `*.read` nodes | `false` | `false` | `false` |
-| `general` (default) | `readonly` + `session.maintain`, `workspace.maintain`, `agent.maintain@self`, `memory.maintain@self`, `schedule.maintain@self`, `workbench.maintain@self`, `org.maintain`, `browser.maintain` | `false` | `false` | `false` |
-| `system-maintainer` | `general` + `agent.maintain`, `memory.maintain`, `schedule.maintain`, `workbench.maintain`, `skill.maintain`, `plugin.maintain`, `model.maintain`, `vault.maintain`, `trace.maintain`, `benchmark.maintain`, `machine.maintain`, `agents.messaging.maintain`, `messaging.maintain` | `false` | `true` | `true` |
-| `admin` | `system-maintainer` + all domain `*.all` nodes | `true` | `false` | `true` |
-| `full-permissions` | `["admin"]` | `true` | `true` | `true` |
+| Composite Role | Child Roles (`children`) | `allEndpoints` | `agentApi` (passes `requireHuman`) |
+| --- | --- | --- | --- |
+| `none` | `[]` | `false` | `false` |
+| `readonly` | All domain `*.read` nodes | `false` | `false` |
+| `general` (default) | `readonly` + `session.maintain`, `workspace.maintain`, `agent.maintain@self`, `memory.maintain@self`, `schedule.maintain@self`, `workbench.maintain@self`, `org.maintain`, `browser.maintain` | `false` | `false` |
+| `system-maintainer` | `general` + `agent.maintain`, `memory.maintain`, `schedule.maintain`, `workbench.maintain`, `skill.maintain`, `plugin.maintain`, `model.maintain`, `vault.maintain`, `trace.maintain`, `benchmark.maintain`, `machine.maintain`, `agents.messaging.maintain`, `messaging.maintain` | `false` | `true` |
+| `admin` | `system-maintainer` + all domain `*.all` nodes | `true` | `false` |
+| `full-permissions` | `["admin"]` | `true` | `true` |
 
 ### Auth Refiners (`<roleOrRoute>@<refinerId>`) and priority-ordered overrides
 
@@ -179,7 +179,7 @@ The authorization session mechanism decouples **session credentials** from the s
 - **Session records**: store only the SHA-256 hash of the raw token (the raw token is returned only once at issuance), the subject identity, the `role` and `generation` at issuance, `created_at`, `expires_at`, and `last_used_at`.
 - **Permission generation records**: track the subject's current `generation`, current `role`, and explicitly granted route IDs (`apiIds`).
 
-When a request arrives with a session Bearer token, the authentication layer verifies that the session is unexpired and reads the subject's current generation record to derive the effective grant (`{ role, generation, allEndpoints, apiIds, routeRefiners }`). Updating a subject's role or `apiIds` via `bumpGeneration` takes effect on the next request without re-issuing the token. Deactivating or deleting a subject revokes all of its active sessions and its generation state in one step.
+When a request arrives with a session Bearer token, the authentication layer verifies that the session is unexpired, reads the subject's current generation record, and resolves the cached grant (`{ role, generation, allEndpoints, apiIds }`, where `apiIds` is a `ReadonlySet<string>`) keyed by `generation`. As long as `generation` is unchanged, requests reuse the cached `Set` instance for O(1) lookups; updating a subject's role or `apiIds` via `bumpGeneration` invalidates the cached `Set` on the next request without re-issuing the token. Deactivating or deleting a subject revokes all of its active sessions and its generation state in one step.
 
 ### HTTP authentication and route-level authorization
 
@@ -191,9 +191,9 @@ Every protected request entering `HttpModule` passes through two checks:
 2. **Route Authorization**:
    - Human user requests proceed under standard user and administrator checks.
    - Agent requests (`c.var.agentAuth` present) run `checkRouteAuth(c, route.id)` before the route handler:
-     - Endpoint check: requires `grant.allEndpoints === true` or `grant.apiIds.includes(routeId)`, returning `403 permission_required` otherwise.
+     - Endpoint check: requires `grant.allEndpoints === true` or `grant.apiIds.has(routeId)` (plus wildcard pattern match when configured), returning `403 permission_required` otherwise.
      - Project isolation check: when `grant.allEndpoints === false` and the route carries a `:projectId` parameter, `:projectId` must equal `agentAuth.projectId`, returning `403 permission_required` otherwise.
-     - Cross-Agent write check: when `grant.allEndpoints === false` and `grant.crossAgent !== true`, a non-`GET` request carrying `:agentId !== agentAuth.agentId` (other than `session.create`) returns `403 permission_required`.
+     - Auth Refiner check: when the route carries refiner bindings (such as `<domain>.maintain@self`), evaluates the bound `AuthRefiner` components in priority order.
      - Human-only gate (`requireHuman`): permits Agent requests only when `agentAuth.agentApi === true` (`system-maintainer` or `full-permissions`), returning `403 human_required` otherwise.
 
 ### Boundary of the CLI surface

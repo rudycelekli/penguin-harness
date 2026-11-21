@@ -55,7 +55,7 @@ export type AgentAuthSessionRow = AuthRoleSessionRow;
 
 /**
  * The principal's CURRENT grant: the role's scope over the server's HTTP routes plus the explicit
- * route ids granted to it. What every request is checked against.
+ * route ids granted to it, cached per generation. What every request is checked against.
  */
 export interface AgentAuthGrant {
   role: AgentAuthRole;
@@ -64,12 +64,8 @@ export interface AgentAuthGrant {
   allEndpoints: boolean;
   /** true = the role reaches human-gated endpoints (`requireHuman`) such as session creation/deletion. */
   agentApi?: boolean;
-  /** true = the role permits mutating another Agent's config, skills, schedules, or vault in the same project. */
-  crossAgent?: boolean;
-  /** The effective HTTP route ids after expanding the role tree and explicit extra grants. */
-  apiIds: readonly string[];
-  /** Per-route refiner IDs (`<roleOrRoute>@<refinerId>`) required for routes not granted unconditionally. */
-  routeRefiners?: Readonly<Record<string, readonly string[]>>;
+  /** The effective HTTP route ids after expanding the role tree and explicit extra grants, built and cached per generation. */
+  apiIds: ReadonlySet<string>;
 }
 
 /** The principal's CURRENT generation row: what re-derivation reads. */
