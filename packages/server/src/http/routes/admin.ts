@@ -94,14 +94,15 @@ export class AdminRoutes {
   @Use() private readonly proxy!: Proxy;
   @Use() private readonly settings!: Settings;
   @Use() private readonly pluginConfigAdmin!: PluginConfigAdmin;
-  @Bind("admin-api.users") usersRoutes!: Hono<AppEnv>;
-  @Bind("admin-api.settings") settingsRoutes!: Hono<AppEnv>;
-  @Bind("admin-api.plugin-config") pluginConfigRoutes!: Hono<AppEnv>;
+  @Bind("admin.users") usersRoutes!: Hono<AppEnv>;
+  @Bind("admin.settings") settingsRoutes!: Hono<AppEnv>;
+  @Bind("admin.plugin-config") pluginConfigRoutes!: Hono<AppEnv>;
   setup({ resources }: ClassCtx) {
     this.pluginConfigRoutes = adminPluginConfigRoutes(this.pluginConfigAdmin, {
       // The host is claimed per request: the plugins of this generation are recorded after setup.
       icon: (plugin) => pluginPackageDisplayOf(pluginHostFrom(resources), plugin).icon,
-    });    this.usersRoutes = adminUsersRoutes({
+    });
+    this.usersRoutes = adminUsersRoutes({
       adminService: this.admin,
       desktop: this.desktop.current() as DesktopService | null,
     });

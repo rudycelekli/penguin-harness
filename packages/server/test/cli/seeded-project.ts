@@ -30,7 +30,6 @@ import type { ChannelHub } from "../../src/runtime/channel.js";
 import type { SessionManager } from "../../src/runtime/session-manager.js";
 import { AgentConfigService } from "../../src/services/agent-config-service.js";
 import { ProjectConfigService } from "../../src/services/project-config-service.js";
->>>>>>> b60bda5dd (feat: add agent role/session HTTP route authorization, CLI-over-HTTP config/version, and PRFC-0026)
 
 const appsByOrigin = new Map<string, Hono<AppEnv>>();
 const listeners: net.Server[] = [];

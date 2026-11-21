@@ -403,10 +403,11 @@ export class PluginRoutes {
   @Use() private readonly library!: PluginLibrary;
   @Use() private readonly workbenches!: Workbenches;
   @Use() private readonly pluginModules!: PluginModules;
-  @Bind("PluginRoutes.library") libraryRoutes!: Hono<AppEnv>;
-  @Bind("PluginRoutes.agent-plugins") pluginRoutes!: Hono<AppEnv>;
-  @Bind("PluginRoutes.agent-hooks") hookRoutes!: Hono<AppEnv>;
-  @Bind("PluginRoutes.agent-mcp-servers") mcpServerRoutes!: Hono<AppEnv>;  setup() {
+  @Bind("plugins.library") libraryRoutes!: Hono<AppEnv>;
+  @Bind("plugins.agent-plugins") pluginRoutes!: Hono<AppEnv>;
+  @Bind("plugins.agent-hooks") hookRoutes!: Hono<AppEnv>;
+  @Bind("plugins.agent-mcp-servers") mcpServerRoutes!: Hono<AppEnv>;
+  setup() {
     const deps = {
       config: this.config,
       access: this.access,

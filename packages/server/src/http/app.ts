@@ -114,7 +114,6 @@ export interface HttpSlots {
       roles?: readonly string[];
     },
     Opaque<"Hono", Hono<AppEnv>>
-    Opaque<"Hono", Hono<AppEnv>>
   >;
   /**
    * Declarative role node definitions or extensions (`RoleContribution`).
@@ -135,6 +134,8 @@ export interface HttpSlots {
   authRefiners: Slot<
     { scope: readonly string[]; order?: number },
     Opaque<"AuthRefiner", AuthRefiner>
+  >;
+  /**
    * A WebSocket endpoint: the upgrades whose path `prefix` covers (that path, or below it;
    * `:name` segments match any one segment) are handed to the code half. `auth: "user"` has the
    * host check the handshake's Origin and session cookie first and hand the endpoint the user;
@@ -144,7 +145,8 @@ export interface HttpSlots {
    */
   upgrades: Slot<
     { prefix: string; auth: "none" | "user" },
-    Opaque<"WebSocketUpgrade", WebSocketUpgrade>  >;
+    Opaque<"WebSocketUpgrade", WebSocketUpgrade>
+  >;
 }
 
 /**

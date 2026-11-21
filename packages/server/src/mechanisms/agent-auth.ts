@@ -1,16 +1,14 @@
 /**
- * The Agent auth mechanism: what the server requires of the sessions it issues to Agents,
- * declared apart from what implements it (db/repos/agent-auth-sessions.ts).
+ * Role-bound authorization session & permission mechanisms: what the server requires of the
+ * role-scoped sessions it issues (serving Agents today and human principals alike), declared
+ * apart from what implements it (`db/repos/auth-role-sessions.ts`).
  *
- * The same shape the user auth keeps: a server-side row per session, the raw token only in
- * the Agent's vault, the row its sha256. Issued when the Agent is created (or first needs
- * one); every session of the Agent goes when the Agent is archived. Authorization is per
- * HTTP route id — the server's HTTP routes are addressed by their `"HttpModule.routes"` id,
- * and one per-route check governs HTTP and CLI alike (since CLI commands reach the server
- * over HTTP). What an Agent may reach is the GRANT bound to its CURRENT generation: a role
- * whose scope spans every endpoint, plus the explicit route ids granted to it. The grant is
- * never stored with the session — each request re-derives it from the CURRENT generation, so
- * a role or grant change hot-reloads without re-issue and no stale grant outlives one request.
+ * A server-side row per session in `auth_role_sessions` stores only the token's sha256, and
+ * `auth_generations` tracks the principal's CURRENT permission generation. Authorization is
+ * per HTTP route id — the server's HTTP routes are addressed by their `"HttpModule.routes"` id,
+ * and one per-route check governs HTTP and CLI alike (since CLI commands reach the server over
+ * HTTP). Each request re-derives the grant from the CURRENT generation, so a role or grant
+ * change hot-reloads without re-issue and no stale grant outlives one request.
  */
 import { Interface } from "@prismshadow/penguin-core/kernel";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
@@ -20,9 +18,13 @@ import type {
   RouteRoleRegistration,
 } from "../auth/agent-roles.js";
 import type { AgentAuthContext } from "../auth/agent-auth-service.js";
+import type { AuthSubjectKind } from "../db/repos/auth-role-sessions.js";
 
 /** One issued session, as surfaces show it (never the raw token). */
-export interface AgentAuthSessionInfo {
+export interface AuthRoleSessionInfo {
+  subjectId?: string;
+  subjectKind?: AuthSubjectKind;
+  userId?: string | null;
   projectId: string;
   agentId: string;
   role: AgentAuthRole;
@@ -31,10 +33,15 @@ export interface AgentAuthSessionInfo {
   expiresAt: string;
   lastUsedAt: string | null;
 }
+
+export type AgentAuthSessionInfo = AuthRoleSessionInfo;
 
 /** One stored session with its token hash — what authentication reads. */
-export interface AgentAuthSessionRow {
+export interface AuthRoleSessionRow {
   tokenHash: string;
+  subjectId: string;
+  subjectKind: AuthSubjectKind;
+  userId: string | null;
   projectId: string;
   agentId: string;
   role: AgentAuthRole;
@@ -44,8 +51,10 @@ export interface AgentAuthSessionRow {
   lastUsedAt: string | null;
 }
 
+export type AgentAuthSessionRow = AuthRoleSessionRow;
+
 /**
- * The Agent's CURRENT grant: the role's scope over the server's HTTP routes plus the explicit
+ * The principal's CURRENT grant: the role's scope over the server's HTTP routes plus the explicit
  * route ids granted to it. What every request is checked against.
  */
 export interface AgentAuthGrant {
@@ -63,14 +72,19 @@ export interface AgentAuthGrant {
   routeRefiners?: Readonly<Record<string, readonly string[]>>;
 }
 
-/** The Agent's CURRENT generation row: what re-derivation reads. */
-export interface AgentAuthGenerationRow {
+/** The principal's CURRENT generation row: what re-derivation reads. */
+export interface AuthGenerationRow {
+  subjectId: string;
+  subjectKind: AuthSubjectKind;
+  userId: string | null;
   projectId: string;
   agentId: string;
   generation: number;
   role: AgentAuthRole;
   apiIds: readonly string[];
 }
+
+export type AgentAuthGenerationRow = AuthGenerationRow;
 
 export interface AgentAuthPermissionsSlots {
   /**
@@ -83,7 +97,7 @@ export interface AgentAuthPermissionsSlots {
 /** The per-route grant face: what AgentAuthPermissionProvider implements. */
 @Interface()
 export abstract class AgentAuthPermissions {
-  /** The Agent's CURRENT grant, from its CURRENT generation and role. */
+  /** The principal's CURRENT grant, from its CURRENT generation and role. */
   abstract grantOf(projectId: string, agentId: string): AgentAuthGrant | null;
   /** Registers or extends a role node in the permission provider's role registry. */
   abstract registerRole(roleId: string, contribution: RoleContribution): void;
@@ -91,13 +105,15 @@ export abstract class AgentAuthPermissions {
   abstract registerRoute(registration: RouteRoleRegistration): void;
 }
 
-/** AgentAuthSessions: the mechanism AgentAuthSessionsRepo implements. */
+/** AuthRoleSessions: the mechanism AuthRoleSessionsRepo implements. */
 @Interface()
-export abstract class AgentAuthSessions {
-  /** Mints a session for the Agent; the raw token leaves once, into the caller's hands. */
+export abstract class AuthRoleSessions {
+  /** Mints a role-bound session for an Agent or human user; the raw token leaves once, into the caller's hands. */
   abstract issue(opts: {
-    projectId: string;
-    agentId: string;
+    projectId?: string | null;
+    agentId?: string | null;
+    userId?: string | null;
+    subjectId?: string;
     role: AgentAuthRole;
     apiIds: readonly string[];
     generation: number;
@@ -105,9 +121,24 @@ export abstract class AgentAuthSessions {
     ttlMs: number;
   }): { token: string; expiresAt: string; generation: number };
   /** The session whose token hashes to `tokenHash`; null when none does or it is expired. */
-  abstract findByTokenHash(tokenHash: string): AgentAuthSessionRow | null;
+  abstract findByTokenHash(tokenHash: string): AuthRoleSessionRow | null;
+  /** The principal's CURRENT generation row by subjectId; null before its first session. */
+  abstract generationBySubject(subjectId: string): AuthGenerationRow | null;
   /** The Agent's CURRENT generation row; null before its first session. */
-  abstract generationOf(projectId: string, agentId: string): AgentAuthGenerationRow | null;
+  abstract generationOf(projectId: string, agentId: string): AuthGenerationRow | null;
+  /**
+   * Sets a principal's CURRENT generation, role and granted route ids. Every live session keeps
+   * its token but re-derives its grant from this at its next request.
+   */
+  abstract bumpSubjectGeneration(opts: {
+    subjectId?: string;
+    userId?: string | null;
+    projectId?: string | null;
+    agentId?: string | null;
+    role: string;
+    apiIds: readonly string[];
+    generation: number;
+  }): void;
   /**
    * Sets the Agent's CURRENT generation, role and granted route ids. Every live session keeps
    * its token but re-derives its grant from this at its next request.
@@ -122,10 +153,14 @@ export abstract class AgentAuthSessions {
   abstract touch(tokenHash: string, at: string): void;
   /** Drops the Agent's sessions (re-issue follows); the generation row stays. */
   abstract deleteSessionsOf(projectId: string, agentId: string): void;
+  /** Drops everything of a principal by subjectId — sessions AND its generation row. */
+  abstract deleteBySubject(subjectId: string): void;
   /** Drops everything of the Agent — sessions AND its generation row (the Agent is archived). */
   abstract deleteByAgent(projectId: string, agentId: string): void;
   abstract deleteExpired(at: string): void;
 }
+
+export { AuthRoleSessions as AgentAuthSessions };
 
 /**
  * AgentAuth: the mechanism the auth service implements — what the issue/authenticate paths
@@ -144,7 +179,7 @@ export abstract class AgentAuth {
   /** Whether the CURRENT grant reaches the HTTP route `apiId`. */
   abstract allowsEndpoint(projectId: string, agentId: string, apiId: string): boolean;
   /** The Agent's CURRENT generation row; null before its first session. */
-  abstract generationOf(projectId: string, agentId: string): AgentAuthGenerationRow | null;
+  abstract generationOf(projectId: string, agentId: string): AuthGenerationRow | null;
   /**
    * Authenticates a presented Bearer; the context carries the Agent's CURRENT grant —
    * a session issued at an older generation reads the new one here.

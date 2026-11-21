@@ -133,7 +133,8 @@ function backendPrefs(store: UiPrefsStore) {
         // extension pairs with a code, not a session. It calls from its own
         // `chrome-extension://` origin, which the route admits itself (extensionPairRoutes):
         // the same-origin rule for writes is not this group's.
-        id: "BuiltinBrowserRoutes.pair",        prefix: "/api/builtin-browser/extension/pair",
+        id: "builtin-browser.pair",
+        prefix: "/api/builtin-browser/extension/pair",
         auth: "none",
         order: 7,
         origin: "own",
@@ -177,8 +178,8 @@ export class BuiltinBrowserRoutes {
   @Use() private readonly access!: Access;
   @Use() private readonly config!: Config;
   @Provide() gate!: BrowserExtensionGate;
-  @Bind("BuiltinBrowserRoutes.routes") routes!: Hono<AppEnv>;
-  @Bind("BuiltinBrowserRoutes.pair") pairRoutes!: Hono<AppEnv>;
+  @Bind("builtin-browser.routes") routes!: Hono<AppEnv>;
+  @Bind("builtin-browser.pair") pairRoutes!: Hono<AppEnv>;
   @Bind("BuiltinBrowserRoutes.extensionSocket") extensionSocket!: WebSocketUpgrade;
   setup({ effect }: ClassCtx) {
     const users = this.users;

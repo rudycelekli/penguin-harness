@@ -14,10 +14,10 @@ import type {
   AgentAuth,
   AgentAuthGrant,
   AgentAuthPermissions,
-  AgentAuthSessions,
+  AuthRoleSessions,
 } from "../mechanisms/agent-auth.js";
-import type { AgentAuthSessionRow } from "../db/repos/agent-auth-sessions.js";
-import { agentSessionTokenHash } from "../db/repos/agent-auth-sessions.js";
+import type { AuthRoleSessionRow } from "../db/repos/auth-role-sessions.js";
+import { authRoleSessionTokenHash } from "../db/repos/auth-role-sessions.js";
 import {
   DEFAULT_AGENT_AUTH_ROLE,
   RoleRegistry,
@@ -53,7 +53,7 @@ export interface AgentAuthContext {
 
 @Component()
 export class AgentAuthService implements AgentAuth {
-  @Use() private readonly agentAuthSessions!: AgentAuthSessions;
+  @Use() private readonly authRoleSessions!: AuthRoleSessions;
   /** The Agent's per-route grant, derived at its CURRENT generation and role. */
   @Use() private readonly agentAuthPermissions!: AgentAuthPermissions;
   private readonly activeTokens = new Map<string, string>();
@@ -68,7 +68,7 @@ export class AgentAuthService implements AgentAuth {
     agentId: string,
     now: Date,
   ): { token: string; expiresAt: string; generation: number; role: AgentAuthRole } {
-    const out = this.agentAuthSessions.issue({
+    const out = this.authRoleSessions.issue({
       projectId,
       agentId,
       role: DEFAULT_AGENT_AUTH_ROLE,
@@ -78,7 +78,7 @@ export class AgentAuthService implements AgentAuth {
       ttlMs: AGENT_SESSION_TTL_MS,
     });
     this.activeTokens.set(`${projectId}\0${agentId}`, out.token);
-    const current = this.agentAuthSessions.generationOf(projectId, agentId);
+    const current = this.authRoleSessions.generationOf(projectId, agentId);
     return { ...out, role: current?.role ?? DEFAULT_AGENT_AUTH_ROLE };
   }
 
@@ -100,9 +100,9 @@ export class AgentAuthService implements AgentAuth {
     apiIds: readonly string[],
     now: Date,
   ): { generation: number; role: AgentAuthRole; apiIds: readonly string[]; token: string } {
-    const current = this.agentAuthSessions.generationOf(projectId, agentId);
+    const current = this.authRoleSessions.generationOf(projectId, agentId);
     const nextGen = (current?.generation ?? 0) + 1;
-    this.agentAuthSessions.bumpGeneration(projectId, agentId, role, apiIds, nextGen);
+    this.authRoleSessions.bumpGeneration(projectId, agentId, role, apiIds, nextGen);
     const token = this.ensureSessionToken(projectId, agentId, now);
     return { generation: nextGen, role, apiIds: [...apiIds], token };
   }
@@ -131,7 +131,7 @@ export class AgentAuthService implements AgentAuth {
 
   /** The Agent's CURRENT generation row; null before its first session. */
   generationOf(projectId: string, agentId: string) {
-    return this.agentAuthSessions.generationOf(projectId, agentId);
+    return this.authRoleSessions.generationOf(projectId, agentId);
   }
 
   /**
@@ -140,14 +140,14 @@ export class AgentAuthService implements AgentAuth {
    * generation reads the new one here.
    */
   authenticate(bearer: string, now: Date): AgentAuthContext | null {
-    const row: AgentAuthSessionRow | null = this.agentAuthSessions.findByTokenHash(
-      agentSessionTokenHash(bearer),
+    const row: AuthRoleSessionRow | null = this.authRoleSessions.findByTokenHash(
+      authRoleSessionTokenHash(bearer),
     );
     if (row === null) return null;
     if (row.expiresAt <= now.toISOString()) return null;
     const grant = this.agentAuthPermissions.grantOf(row.projectId, row.agentId);
     if (grant === null) return null;
-    this.agentAuthSessions.touch(row.tokenHash, now.toISOString());
+    this.authRoleSessions.touch(row.tokenHash, now.toISOString());
     return {
       projectId: row.projectId,
       agentId: row.agentId,
@@ -159,14 +159,14 @@ export class AgentAuthService implements AgentAuth {
   /** Drops the Agent's sessions AND its generation row (the Agent is archived). */
   revokeAll(projectId: string, agentId: string): void {
     this.activeTokens.delete(`${projectId}\0${agentId}`);
-    this.agentAuthSessions.deleteByAgent(projectId, agentId);
+    this.authRoleSessions.deleteByAgent(projectId, agentId);
   }
 }
 
 /** Derives the grant from the Agent's CURRENT generation row — the one reader of the pair. */
 @Component()
 export class AgentAuthPermissionProvider implements AgentAuthPermissions {
-  @Use() private readonly agentAuthSessions!: AgentAuthSessions;
+  @Use() private readonly authRoleSessions!: AuthRoleSessions;
   private readonly roleRegistry = new RoleRegistry();
 
   setup({ contributions }: ClassCtx): void {
@@ -187,7 +187,7 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
   }
 
   grantOf(projectId: string, agentId: string): AgentAuthGrant | null {
-    const current = this.agentAuthSessions.generationOf(projectId, agentId);
+    const current = this.authRoleSessions.generationOf(projectId, agentId);
     if (current === null) return null;
     const expanded = this.roleRegistry.expandRoleGrant(current.role, current.apiIds);
     return {

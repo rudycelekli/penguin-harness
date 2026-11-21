@@ -73,13 +73,13 @@ import { UpdateJobService } from "./services/update-job.js";
 import { HarnessHistoryStore } from "./services/harness-history.js";
 import { UsersRepo } from "@prismshadow/penguin-library-auth/repos/users";
 import { AuthSessionsRepo } from "@prismshadow/penguin-library-auth/repos/auth-sessions";
-import { AgentAuthSessionsRepo } from "./db/repos/agent-auth-sessions.js";
+import { AuthRoleSessionsRepo } from "./db/repos/auth-role-sessions.js";
 import { AgentAuthService, AgentAuthPermissionProvider } from "./auth/agent-auth-service.js";
 import { AuthSelfRefiner, AuthWithAskRefiner } from "./auth/auth-refiners.js";
 import {
   AgentAuth,
   AgentAuthPermissions,
-  AgentAuthSessions,
+  AuthRoleSessions,
 } from "./mechanisms/agent-auth.js";
 import { ServerSettingsRepo } from "@prismshadow/penguin-library-setting/repos/server-settings";
 import { UiPrefsRepo } from "@prismshadow/penguin-library-setting/repos/ui-prefs";
@@ -352,7 +352,7 @@ export class RuntimeModule {}
   children: [
     UsersRepo,
     AuthSessionsRepo,
-    AgentAuthSessionsRepo,
+    AuthRoleSessionsRepo,
     AgentAuthService,
     AgentAuthPermissionProvider,
     ScryptHasher,
@@ -367,7 +367,7 @@ export class RuntimeModule {}
   exports: [
     Users,
     AuthSessions,
-    AgentAuthSessions,
+    AuthRoleSessions,
     AgentAuthPermissions,
     AgentAuth,
     Auth,

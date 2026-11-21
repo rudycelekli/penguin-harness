@@ -400,12 +400,13 @@ export class MeRoutes {
   @Use() private readonly backgroundImages!: BackgroundImageStore;
   @Use() private readonly settings!: Settings;
   @Use() private readonly users!: Users;
-  @Bind("MeRoutes.routes") routes!: Hono<AppEnv>;
+  @Bind("me") routes!: Hono<AppEnv>;
   setup({ contributions }: ClassCtx) {
     const ownedPrefs = (contributions.ownedPrefs ?? []).map((c) => ({
       key: c.data.key as string,
       message: c.data.message as string,
-    }));    this.routes = meRoutes({
+    }));
+    this.routes = meRoutes({
       authService: this.auth,
       config: this.config,
       desktop: this.desktop.current() as DesktopService | null,

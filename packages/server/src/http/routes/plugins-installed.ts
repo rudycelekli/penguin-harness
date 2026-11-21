@@ -1026,7 +1026,8 @@ export class InstalledPluginRoutes {
   @Use() private readonly db!: Db;
   @Use() private readonly packages!: PluginPackages;
   @Use() private readonly pluginModules!: PluginModules;
-  @Bind("InstalledPluginRoutes.routes") routes!: Hono<AppEnv>;  setup() {
+  @Bind("installed-plugins") routes!: Hono<AppEnv>;
+  setup() {
     const hmr = this.hmr;
     this.routes = installedPluginRoutes({
       root: this.config.root,

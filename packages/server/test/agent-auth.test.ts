@@ -30,8 +30,11 @@ import {
   type AuthRefinerAction,
   type AuthRefinerContext,
 } from "../src/auth/auth-refiners.js";
-import { AgentAuthSessionsRepo } from "../src/db/repos/agent-auth-sessions.js";
-import { AgentAuthSessions, AgentAuthPermissions } from "../src/mechanisms/agent-auth.js";
+import {
+  AuthRoleSessionsRepo,
+  authRoleSessionTokenHash,
+} from "../src/db/repos/auth-role-sessions.js";
+import { AuthRoleSessions, AgentAuthPermissions } from "../src/mechanisms/agent-auth.js";
 import { HttpModule, endpointOf } from "../src/http/app.js";
 import type { AppEnv } from "../src/auth/middleware.js";
 import { requireHuman } from "../src/auth/middleware.js";
@@ -46,14 +49,18 @@ function dbDouble(): Db {
   const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(`
-    CREATE TABLE agent_auth_sessions (
-      token_hash TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent_id TEXT NOT NULL,
+    CREATE TABLE auth_role_sessions (
+      token_hash TEXT PRIMARY KEY, subject_id TEXT NOT NULL,
+      subject_kind TEXT NOT NULL DEFAULT 'agent', user_id TEXT,
+      project_id TEXT, agent_id TEXT,
       role TEXT NOT NULL, generation INTEGER NOT NULL, created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL, last_used_at TEXT
     );
-    CREATE TABLE agent_auth_generations (
-      project_id TEXT NOT NULL, agent_id TEXT NOT NULL, generation INTEGER NOT NULL,
-      role TEXT NOT NULL, allowed_apis TEXT NOT NULL DEFAULT '[]', PRIMARY KEY (project_id, agent_id)
+    CREATE TABLE auth_generations (
+      subject_id TEXT PRIMARY KEY, subject_kind TEXT NOT NULL DEFAULT 'agent',
+      user_id TEXT, project_id TEXT, agent_id TEXT,
+      generation INTEGER NOT NULL, role TEXT NOT NULL,
+      allowed_apis TEXT NOT NULL DEFAULT '[]'
     );
   `);
   return {
@@ -64,16 +71,16 @@ function dbDouble(): Db {
 
 function service() {
   const db = dbDouble();
-  const repo = wire(AgentAuthSessionsRepo, {});
+  const repo = wire(AuthRoleSessionsRepo, {});
   (repo as unknown as { db: Db }).db = db;
   const provider = wire(AgentAuthPermissionProvider, {});
-  (provider as unknown as { agentAuthSessions: AgentAuthSessions }).agentAuthSessions = repo;
+  (provider as unknown as { authRoleSessions: AuthRoleSessions }).authRoleSessions = repo;
   const auth = wire(AgentAuthService, {});
   const a = auth as unknown as {
-    agentAuthSessions: AgentAuthSessions;
+    authRoleSessions: AuthRoleSessions;
     agentAuthPermissions: AgentAuthPermissions;
   };
-  a.agentAuthSessions = repo;
+  a.authRoleSessions = repo;
   a.agentAuthPermissions = provider;
   return { auth, repo };
 }
@@ -213,6 +220,48 @@ describe("the agent auth service", () => {
     auth.revokeAll("p", "a");
     expect(auth.authenticate(token, NOW)).toBeNull();
     expect(auth.generationOf("p", "a")).toBeNull();
+  });
+
+  it("stores and re-derives role-bound sessions for human users (subject_kind = 'user') in the same auth_role_sessions and auth_generations tables", () => {
+    const { repo } = service();
+    const issued = repo.issue({
+      userId: "alice",
+      projectId: "p1",
+      role: "readonly",
+      apiIds: ["session.runTask"],
+      generation: 0,
+      now: NOW,
+      ttlMs: 60_000,
+    });
+    const row = repo.findByTokenHash(authRoleSessionTokenHash(issued.token));
+    expect(row).not.toBeNull();
+    expect(row?.subjectId).toBe("user:p1/alice");
+    expect(row?.subjectKind).toBe("user");
+    expect(row?.userId).toBe("alice");
+    expect(row?.projectId).toBe("p1");
+    expect(row?.agentId).toBe("");
+
+    repo.bumpSubjectGeneration({
+      userId: "alice",
+      projectId: "p1",
+      role: "general",
+      apiIds: ["admin.settings.get"],
+      generation: 1,
+    });
+    const gen = repo.generationBySubject("user:p1/alice");
+    expect(gen).toMatchObject({
+      subjectId: "user:p1/alice",
+      subjectKind: "user",
+      userId: "alice",
+      projectId: "p1",
+      generation: 1,
+      role: "general",
+      apiIds: ["admin.settings.get"],
+    });
+
+    repo.deleteBySubject("user:p1/alice");
+    expect(repo.findByTokenHash(authRoleSessionTokenHash(issued.token))).toBeNull();
+    expect(repo.generationBySubject("user:p1/alice")).toBeNull();
   });
 
   it("authorizes single routes and multi-endpoint groups by fine-grained route id, enforcing project and cross-agent scope", async () => {

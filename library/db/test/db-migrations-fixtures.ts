@@ -96,9 +96,9 @@ export function dropBrowserExtensions(db: DatabaseSync): void {
   db.exec("DROP TABLE IF EXISTS plugin_module_requests;");
   // 2026-11-19-plugin-module-preinstalls beside it.
   db.exec("DROP TABLE IF EXISTS plugin_module_preinstalls;");
-  // 2026-11-19-agent-auth-sessions came later still.
+  // 2026-11-19-auth-role-sessions came later still.
   db.exec(
-    "DROP INDEX IF EXISTS idx_agent_auth_sessions_agent; DROP INDEX IF EXISTS idx_agent_auth_sessions_expires; DROP TABLE IF EXISTS agent_auth_generations; DROP TABLE IF EXISTS agent_auth_sessions;",
+    "DROP INDEX IF EXISTS idx_auth_role_sessions_subject; DROP INDEX IF EXISTS idx_auth_role_sessions_agent; DROP INDEX IF EXISTS idx_auth_role_sessions_user; DROP INDEX IF EXISTS idx_auth_role_sessions_expires; DROP INDEX IF EXISTS idx_auth_generations_agent; DROP INDEX IF EXISTS idx_auth_generations_user; DROP TABLE IF EXISTS auth_generations; DROP TABLE IF EXISTS auth_role_sessions;",
   );
 }
 
