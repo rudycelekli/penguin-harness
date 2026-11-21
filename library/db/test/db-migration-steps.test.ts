@@ -775,6 +775,7 @@ describe("a database from before the preinstall record: 2026-11-19-plugin-module
     try {
       expect(migrate(db, { swapPath: true }).applied).toEqual([
         "2026-11-19-plugin-module-preinstalls",
+        "2026-11-19-auth-role-sessions",
       ]);
       const record = db.prepare(
         "INSERT OR IGNORE INTO plugin_module_preinstalls (package, project_id, listed_at) VALUES (?, ?, ?)",
