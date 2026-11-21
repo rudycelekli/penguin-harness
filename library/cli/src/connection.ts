@@ -108,7 +108,7 @@ export async function autoStartServer(
     child = spawn(process.execPath, [entry, "server"], {
       detached: true,
       stdio: ["ignore", fd, fd],
-      env: { ...process.env, PORT: "0" },
+      env: { ...process.env, PORT: "0", PENGUIN_HOME: root },
     });
   } finally {
     fs.closeSync(fd);
@@ -138,11 +138,16 @@ export async function autoStartServer(
 
 /** Resolves where to connect (see the module doc for the order); may auto-start a server. */
 export async function resolveConnection(
-  opts: { server?: string; autoStart?: boolean },
+  opts: { server?: string; autoStart?: boolean; root?: string },
   t: ClientMessages,
 ): Promise<Connection> {
-  const root = resolveRoot();
-  const explicit = opts.server?.trim() || process.env.PENGUIN_API_URL?.trim() || "";
+  // Data root: the --root option first (relative paths against cwd), else PENGUIN_HOME / the
+  // default root (the CLI's documented priority, packages/server/src/cli/root-option.ts).
+  const root = opts.root !== undefined ? path.resolve(opts.root) : resolveRoot();
+  const explicit =
+    opts.server?.trim() ||
+    (opts.root === undefined ? process.env.PENGUIN_API_URL?.trim() : undefined) ||
+    "";
   if (explicit !== "") {
     const url = normalizeServerUrl(explicit, t);
     const loopback = isLoopbackUrl(url);

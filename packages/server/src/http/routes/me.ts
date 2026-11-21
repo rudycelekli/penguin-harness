@@ -383,7 +383,7 @@ export function meRoutes(deps: MeRouteDeps): Hono<AppEnv> {
   contributes: {
     "HttpModule.routes": [
       {
-        id: "MeRoutes.routes",
+        id: "me",
         prefix: "/api/me",
         auth: "user",
         order: 10,
@@ -405,8 +405,7 @@ export class MeRoutes {
     const ownedPrefs = (contributions.ownedPrefs ?? []).map((c) => ({
       key: c.data.key as string,
       message: c.data.message as string,
-    }));
-    this.routes = meRoutes({
+    }));    this.routes = meRoutes({
       authService: this.auth,
       config: this.config,
       desktop: this.desktop.current() as DesktopService | null,

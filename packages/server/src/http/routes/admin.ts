@@ -68,19 +68,19 @@ export function adminUsersRoutes(deps: AdminRouteDeps): Hono<AppEnv> {
   contributes: {
     "HttpModule.routes": [
       {
-        id: "admin-api.users",
+        id: "admin.users",
         prefix: "/api/admin/users",
         auth: "user",
         order: 30,
       },
       {
-        id: "admin-api.settings",
+        id: "admin.settings",
         prefix: "/api/admin/settings",
         auth: "user",
         order: 40,
       },
       {
-        id: "admin-api.plugin-config",
+        id: "admin.plugin-config",
         prefix: "/api/admin/plugin-config",
         auth: "user",
         order: 45,
@@ -101,8 +101,7 @@ export class AdminRoutes {
     this.pluginConfigRoutes = adminPluginConfigRoutes(this.pluginConfigAdmin, {
       // The host is claimed per request: the plugins of this generation are recorded after setup.
       icon: (plugin) => pluginPackageDisplayOf(pluginHostFrom(resources), plugin).icon,
-    });
-    this.usersRoutes = adminUsersRoutes({
+    });    this.usersRoutes = adminUsersRoutes({
       adminService: this.admin,
       desktop: this.desktop.current() as DesktopService | null,
     });

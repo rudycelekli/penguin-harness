@@ -313,6 +313,7 @@ describe("2026-09-23-machines-columns → current: 2026-10-04-browser-extensions
         "2026-11-19-usage-records-purpose",
         "2026-11-19-plugin-module-requests",
         "2026-11-19-plugin-module-preinstalls",
+        "2026-11-19-agent-auth-sessions",
       ]);
       db.exec("PRAGMA foreign_keys = ON");
       db.exec(
@@ -380,6 +381,7 @@ describe("a sessions table from before the sidebar mark: 2026-10-12-sessions-kep
         "2026-11-19-usage-records-purpose",
         "2026-11-19-plugin-module-requests",
         "2026-11-19-plugin-module-preinstalls",
+        "2026-11-19-agent-auth-sessions",
       ]);
       expect(db.prepare("SELECT session_id, kept_at FROM sessions").all()).toEqual([
         { session_id: "s1", kept_at: null },
@@ -441,6 +443,7 @@ describe("an agent_api table from before the session settings: 2026-10-14-agent-
         "2026-11-19-usage-records-purpose",
         "2026-11-19-plugin-module-requests",
         "2026-11-19-plugin-module-preinstalls",
+        "2026-11-19-agent-auth-sessions",
       ]);
       expect(db.prepare("SELECT * FROM agent_api").get()).toMatchObject({
         enabled: 1,
@@ -505,6 +508,7 @@ describe("an agent_api table from before the concurrency limit: 2026-10-14-agent
         "2026-11-19-usage-records-purpose",
         "2026-11-19-plugin-module-requests",
         "2026-11-19-plugin-module-preinstalls",
+        "2026-11-19-agent-auth-sessions",
       ]);
       expect(db.prepare("SELECT * FROM agent_api").get()).toMatchObject({
         enabled: 1,
@@ -557,6 +561,7 @@ describe("a machines table from before the adoption times: 2026-10-16-machines-a
         "2026-11-19-usage-records-purpose",
         "2026-11-19-plugin-module-requests",
         "2026-11-19-plugin-module-preinstalls",
+        "2026-11-19-agent-auth-sessions",
       ]);
       expect(db.prepare("SELECT address, adopted_at FROM machines").all()).toEqual([
         { address: "ssh:nas", adopted_at: null },
@@ -606,6 +611,7 @@ describe("a database from before the account's drafts: 2026-10-26-user-drafts", 
         "2026-11-19-usage-records-purpose",
         "2026-11-19-plugin-module-requests",
         "2026-11-19-plugin-module-preinstalls",
+        "2026-11-19-agent-auth-sessions",
       ]);
       db.exec("PRAGMA foreign_keys = ON");
       db.exec(

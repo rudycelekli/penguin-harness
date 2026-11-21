@@ -53,6 +53,7 @@ import type { TraceIndex } from "@prismshadow/penguin-library-trace";
 import type { Workbenches } from "../../mechanisms/workbenches.js";
 import type { Sessions } from "../../runtime/session-manager.js";
 import { deleteOrganizationWithAgents } from "../../services/organization-deletion.js";
+import { AgentAuth } from "../../mechanisms/agent-auth.js";
 import type { OrganizationDeletionDeps } from "../../services/organization-deletion.js";
 import { TICKET_ID_PATTERN } from "../../organization/files.js";
 import { ORG_TICKET_COLUMNS, isCalendarEventName, isChannelId } from "../../organization/paths.js";
@@ -1010,7 +1011,7 @@ function parseModel(
   contributes: {
     "HttpModule.routes": [
       {
-        id: "OrgRoutes.routes",
+        id: "org",
         prefix: "/api/projects/:projectId/organizations",
         auth: "user",
         order: 145,
@@ -1033,7 +1034,8 @@ export class OrgRoutes {
   @Use() private readonly schedulesRepo!: Schedules;
   @Use() private readonly errorsRepo!: ErrorLog;
   @Use() private readonly agentApi!: AgentApi;
-  @Bind("OrgRoutes.routes") routes!: Hono<AppEnv>;
+  @Use() private readonly agentAuth!: AgentAuth;
+  @Bind("org") routes!: Hono<AppEnv>;
   setup() {
     this.routes = organizationRoutes({
       orgService: this.orgService,
@@ -1050,6 +1052,7 @@ export class OrgRoutes {
         schedulesRepo: this.schedulesRepo,
         errorsRepo: this.errorsRepo,
         agentApi: this.agentApi,
+        agentAuth: this.agentAuth,
       },
     });
   }

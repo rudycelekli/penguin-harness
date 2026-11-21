@@ -67,6 +67,13 @@ export abstract class AgentConfig {
     agentId: string,
     req: VaultUpdateRequest,
   ): Promise<VaultResponse>;
+  abstract setVaultEntry(
+    projectId: string,
+    agentId: string,
+    key: string,
+    value: string,
+  ): Promise<void>;
+  abstract removeVaultEntry(projectId: string, agentId: string, key: string): Promise<boolean>;
 }
 
 /** Memory: the mechanism MemoryService implements. */

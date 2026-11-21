@@ -1006,7 +1006,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
   contributes: {
     "HttpModule.routes": [
       {
-        id: "InstalledPluginRoutes.routes",
+        id: "installed-plugins",
         prefix: "/api/projects/:projectId/plugins/installed",
         auth: "user",
         // Ahead of the catalogue group, whose "/" would otherwise answer here.
@@ -1026,8 +1026,7 @@ export class InstalledPluginRoutes {
   @Use() private readonly db!: Db;
   @Use() private readonly packages!: PluginPackages;
   @Use() private readonly pluginModules!: PluginModules;
-  @Bind("InstalledPluginRoutes.routes") routes!: Hono<AppEnv>;
-  setup() {
+  @Bind("InstalledPluginRoutes.routes") routes!: Hono<AppEnv>;  setup() {
     const hmr = this.hmr;
     this.routes = installedPluginRoutes({
       root: this.config.root,

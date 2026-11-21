@@ -495,7 +495,7 @@ export function pluginCliCommandRoutes(deps: PluginCliCommandRouteDeps): Hono<Ap
   contributes: {
     "HttpModule.routes": [
       {
-        id: "PluginCliCommandsProvider.routes",
+        id: "cli.commands",
         prefix: "/api/cli/commands",
         auth: "user",
         order: 66,
@@ -512,7 +512,7 @@ export class PluginCliCommandsProvider {
   @Use() private readonly projectConfig!: ProjectConfigStore;
   @Use() private readonly db!: Db;
   @Provide() pluginCliCommands!: PluginCliCommands;
-  @Bind("PluginCliCommandsProvider.routes") routes!: Hono<AppEnv>;
+  @Bind("cli.commands") routes!: Hono<AppEnv>;
 
   setup({ contributions }: ClassCtx) {
     const machineId = new MachinesRepo(this.db as unknown as DatabaseSync).ownId();
