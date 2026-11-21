@@ -34,8 +34,6 @@ import { ProjectConfigService } from "../../src/services/project-config-service.
 const appsByOrigin = new Map<string, Hono<AppEnv>>();
 const listeners: net.Server[] = [];
 let savedFetch: typeof globalThis.fetch | null = null;
-let savedApiUrl: string | undefined;
-let hasSavedApiUrl = false;
 
 function buildConfigApp(root: string): Hono<AppEnv> {
   const paths = { root } as Paths;
@@ -91,11 +89,6 @@ function buildConfigApp(root: string): Hono<AppEnv> {
  * for `http://localhost:<port>` to the models and vault Hono routes backed by `root`).
  */
 export async function serveConfigRoot(root: string): Promise<void> {
-  if (!hasSavedApiUrl) {
-    savedApiUrl = process.env.PENGUIN_API_URL;
-    hasSavedApiUrl = true;
-    delete process.env.PENGUIN_API_URL;
-  }
   if (savedFetch === null) {
     const origFetch = globalThis.fetch;
     savedFetch = origFetch;
@@ -134,12 +127,6 @@ export async function closeConfigServers(): Promise<void> {
   if (savedFetch !== null) {
     globalThis.fetch = savedFetch;
     savedFetch = null;
-  }
-  if (hasSavedApiUrl) {
-    if (savedApiUrl === undefined) delete process.env.PENGUIN_API_URL;
-    else process.env.PENGUIN_API_URL = savedApiUrl;
-    savedApiUrl = undefined;
-    hasSavedApiUrl = false;
   }
 }
 

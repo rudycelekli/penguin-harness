@@ -40,9 +40,7 @@ async function run(argv: string[]): Promise<string> {
   const root = rootIdx >= 0 ? argv[rootIdx + 1] : undefined;
   let listener: net.Server | undefined;
   const prevFetch = globalThis.fetch;
-  const prevUrl = process.env.PENGUIN_API_URL;
   if (root) {
-    delete process.env.PENGUIN_API_URL;
     listener = net.createServer();
     await new Promise<void>((resolve) => listener!.listen(0, "127.0.0.1", resolve));
     const port = (listener.address() as net.AddressInfo).port;
@@ -72,8 +70,6 @@ async function run(argv: string[]): Promise<string> {
     return out;
   } finally {
     globalThis.fetch = prevFetch;
-    if (prevUrl === undefined) delete process.env.PENGUIN_API_URL;
-    else process.env.PENGUIN_API_URL = prevUrl;
     if (listener) {
       await new Promise<void>((resolve) => listener!.close(() => resolve()));
     }

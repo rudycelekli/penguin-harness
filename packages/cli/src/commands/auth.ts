@@ -24,8 +24,6 @@ import {
   promptLine,
   promptPassword,
   readSession,
-  resolveConnection,
-  ServerClient,
   sessionFile,
   terminalInput,
   tokenFromSetCookie,
@@ -240,10 +238,6 @@ export function registerAuthCommand(auth: Command, t: Messages): void {
       const ttl = opts.ttlSeconds;
       if (ttl !== undefined && (!Number.isSafeInteger(ttl) || ttl <= 0)) {
         return fail(t.authToken.badTtl);
-      }
-      if (process.env.PENGUIN_API_URL?.trim()) {
-        const client = new ServerClient(await resolveConnection({ root: opts.root }, t), t);
-        await client.request("GET", "/api/admin/users");
       }
       const root = resolveRootOption(opts.root);
       // A session row written straight into web.db (auth-token.ts); no server needed, and safe

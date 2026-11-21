@@ -47,7 +47,7 @@ When the server starts, it writes `api-token` (mode `0600`) and `server.lock` in
 
 An example of an Agent running commands inside a sandbox illustrates how the two surfaces work together:
 
-1. **Provisioning the sandbox view and Agent token**: When the host spawns a tool subprocess inside a sandbox, it mounts a restricted filesystem view (the workspace and sandbox temp directories are accessible, while the host's Penguin Home Root is unmounted) and injects `PENGUIN_API_URL` along with the Agent's session token `PENGUIN_API_TOKEN` into the environment.
+1. **Provisioning the sandbox view and Agent token**: When the host spawns a tool subprocess inside a sandbox, it mounts a restricted filesystem view (the workspace and sandbox temp directories are accessible, while the host's Penguin Home Root is unmounted) and injects the Agent's session token `PENGUIN_API_TOKEN` into the environment.
 2. **Executing system operations from the sandbox perspective (CLI = system permissions)**: When the Agent invokes shell commands or the `penguin` CLI inside the sandbox, the CLI runs locally inside the sandboxed process and operates strictly within the sandbox's terminal and filesystem view.
 3. **Acquiring Penguin capabilities over HTTP (HTTP = penguin permissions)**: When the CLI inside the sandbox calls the server, it authenticates with `PENGUIN_API_TOKEN`. The server verifies the Agent role and route `id` grant attached to that token, permitting only the endpoints granted to that role within the Agent's own project.
 
@@ -201,7 +201,7 @@ Every protected request entering `HttpModule` passes through two checks:
 CLI commands fall into two categories by where they execute:
 
 - **Local system commands**: interact directly with the local operating system and home root, comprising `penguin server` (start, stop, status, and reset-admin-password), `penguin web`, `penguin auth token` (reading the local `api-token`), and `penguin version` (printing the local build identity).
-- **HTTP commands**: cover all remaining Penguin commands, including `penguin chat`, `penguin agent`, `penguin session`, `penguin send`, `penguin cost`, `penguin schedule`, `penguin org`, `penguin plugin`, `penguin exec`, `penguin config model`, `penguin config vault`, and `penguin version --json`. These commands resolve connection credentials through `resolveConnection` (preferring `PENGUIN_API_URL` and `PENGUIN_API_TOKEN`, then falling back to `server.lock`, `cli-session.json`, or `api-token` under `--root` or `PENGUIN_HOME`) and call the HTTP surface through `ServerClient`.
+- **HTTP commands**: cover all remaining Penguin commands, including `penguin chat`, `penguin agent`, `penguin session`, `penguin send`, `penguin cost`, `penguin schedule`, `penguin org`, `penguin plugin`, `penguin exec`, `penguin config model`, `penguin config vault`, and `penguin version --json`. These commands resolve the target server and credentials through `resolveConnection` (using the session token `PENGUIN_API_TOKEN`, or resolving `server.lock`, `cli-session.json`, and `api-token` under `--root` or `PENGUIN_HOME`) and call the HTTP surface through `ServerClient`.
 
 ## Invariants
 [invariants]: #invariants

@@ -47,7 +47,7 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 
 一个在沙盒（Sandbox）内执行命令的 Agent 示例展示了两个表面如何协同工作：
 
-1. **注入沙盒视角与 Agent 令牌**：宿主在沙盒内启动工具子进程时，将文件系统的可见范围限制在工作区目录与沙盒临时目录内（宿主的数据根不可见），同时向环境变量注入宿主 Server 的 `PENGUIN_API_URL` 与为该 Agent 签发的会话令牌 `PENGUIN_API_TOKEN`。
+1. **注入沙盒视角与 Agent 令牌**：宿主在沙盒内启动工具子进程时，将文件系统的可见范围限制在工作区目录与沙盒临时目录内（宿主的数据根不可见），同时向环境变量注入为该 Agent 签发的会话令牌 `PENGUIN_API_TOKEN`。
 2. **在沙盒内执行本地系统操作（CLI = system permissions）**：Agent 在沙盒内运行 shell 命令或 `penguin` CLI 时，CLI 在沙盒进程内本地启动，只能看到并操作以沙盒为视角的终端与文件系统。
 3. **通过令牌调用受控的 Penguin 能力（HTTP = penguin permissions）**：当沙盒内的 CLI 请求 Server 时，它携带环境变量中的 Agent 会话令牌。Server 根据令牌对应的 Agent 角色与目标路由 `id` 校验权限，放行该角色允许的接口并把数据范围限制在该 Agent 所属的项目中。
 
@@ -201,7 +201,7 @@ export class AuthSelfRefiner {
 CLI 命令按执行位置分为两类：
 
 - **本地系统命令**：直接在本地进程访问操作系统与数据根，包括 `penguin server`（启动、停止、状态查询、重置管理员密码）、`penguin web`、`penguin auth token`（读取本地数据根的 `api-token`）以及打印本地编译构建标识的 `penguin version`。
-- **HTTP 业务命令**：涵盖其余全部命令，包括 `penguin chat`、`penguin agent`、`penguin session`、`penguin send`、`penguin cost`、`penguin schedule`、`penguin org`、`penguin plugin`、`penguin exec`、`penguin config model`、`penguin config vault` 以及 `penguin version --json`。这些命令通过 `resolveConnection` 读取连接参数（优先使用 `PENGUIN_API_URL` 与 `PENGUIN_API_TOKEN`，否则从指定 `--root` 或 `PENGUIN_HOME` 解析 `server.lock`、`cli-session.json` 或 `api-token`），再通过 `ServerClient` 请求 HTTP 表面。
+- **HTTP 业务命令**：涵盖其余全部命令，包括 `penguin chat`、`penguin agent`、`penguin session`、`penguin send`、`penguin cost`、`penguin schedule`、`penguin org`、`penguin plugin`、`penguin exec`、`penguin config model`、`penguin config vault` 以及 `penguin version --json`。这些命令通过 `resolveConnection` 解析目标 Server 与认证凭据（使用会话令牌 `PENGUIN_API_TOKEN`，或从指定 `--root` / `PENGUIN_HOME` 解析 `server.lock`、`cli-session.json` 与 `api-token`），再通过 `ServerClient` 请求 HTTP 表面。
 
 ## Invariants
 [invariants]: #invariants
