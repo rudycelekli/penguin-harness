@@ -384,57 +384,40 @@ interface CachedAgentGrant {
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      {
-        id: "role.none",
-        description:
-          "No HTTP capability grants; agent can only inspect its own auth and request permission upgrades.",
-      },
-      {
-        id: "role.readonly",
-        description: "Read-only access across project resources.",
-      },
-      {
-        id: "role.general",
-        children: ["readonly"],
-        description:
-          "Default workflow: read-all, session/workspace/org/browser writes, and @self writes on own agent config, memory, schedules, and workbenches.",
-      },
+      { id: "role.none" },
+      { id: "role.readonly" },
+      { id: "role.general", children: ["readonly"] },
       {
         id: "role.general-with-ask",
-        children: ["general"],
-        withAsk: [
-          "agent.maintain",
-          "memory.maintain",
-          "schedule.maintain",
-          "workbench.maintain",
-          "skill.maintain",
-          "plugin.maintain",
-          "model.maintain",
-          "vault.maintain",
-          "machine.maintain",
-          "messaging.maintain",
-          "agents.messaging.maintain",
+        children: [
+          "general",
+          "agent.maintain@withAsk",
+          "memory.maintain@withAsk",
+          "schedule.maintain@withAsk",
+          "workbench.maintain@withAsk",
+          "skill.maintain@withAsk",
+          "plugin.maintain@withAsk",
+          "model.maintain@withAsk",
+          "vault.maintain@withAsk",
+          "machine.maintain@withAsk",
+          "messaging.maintain@withAsk",
+          "agents.messaging.maintain@withAsk",
         ],
-        description:
-          "Interactive workflow: inherits general (@self writes auto-allowed) and gates cross-agent or system maintenance behind @withAsk approval.",
       },
       {
         id: "role.system-maintainer",
         children: ["general"],
         flags: { allEndpoints: false, agentApi: true },
-        description: "System & RSI maintainer workflow across all domains.",
       },
       {
         id: "role.admin",
         children: ["system-maintainer"],
         flags: { allEndpoints: true, agentApi: false },
-        description: "Project/instance administrator workflow.",
       },
       {
         id: "role.full-permissions",
         children: ["admin"],
         flags: { allEndpoints: true, agentApi: true },
-        description: "Unrestricted full permissions including human-gated endpoints.",
       },
     ],
   },
