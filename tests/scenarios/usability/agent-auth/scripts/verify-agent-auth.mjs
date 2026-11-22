@@ -129,12 +129,9 @@ for (let i = 0; i < 60; i++) {
   try {
     adminToken = readFileSync(join(dataDir, "api-token"), "utf8").trim();
     if (adminToken) {
-      const res = await fetch(
-        `${baseUrl}/api/projects/default_project/agents/default_agent/auth`,
-        {
-          headers: { authorization: `Bearer ${adminToken}` },
-        },
-      );
+      const res = await fetch(`${baseUrl}/api/projects/default_project/agents/default_agent/auth`, {
+        headers: { authorization: `Bearer ${adminToken}` },
+      });
       if (res.ok) {
         serverReady = true;
         break;
@@ -166,10 +163,7 @@ async function adminApi(method, urlPath, body) {
 }
 
 try {
-  const seedAuth = await adminApi(
-    "GET",
-    "/api/projects/default_project/agents/default_agent/auth",
-  );
+  const seedAuth = await adminApi("GET", "/api/projects/default_project/agents/default_agent/auth");
   assert.equal(seedAuth.status, 200);
   assert.equal(seedAuth.body.role, "general");
   const workflows = seedAuth.body.availableAgentRoles.map((r) => r.id);
@@ -479,32 +473,24 @@ writeFileSync(${JSON.stringify(turn3ReportPath)}, JSON.stringify({ perm1Ok: perm
   assert.equal(r3.perm1Ok, true);
   assert.equal(r3.perm2Ok, true);
 
-  const mismatchRes = await adminApi(
-    "PUT",
-    "/api/projects/default_project/agents/qa_peer/auth",
-    {
-      role: "deprecated-role-v1",
-      inherits: ["uninstalled_plugin.maintain", "obsolete.route@self"],
-    },
-  );
+  const mismatchRes = await adminApi("PUT", "/api/projects/default_project/agents/qa_peer/auth", {
+    role: "deprecated-role-v1",
+    inherits: ["uninstalled_plugin.maintain", "obsolete.route@self"],
+  });
   assert.equal(mismatchRes.status, 200);
   assert.equal(mismatchRes.body.mismatches.hasMismatch, true);
   assert.equal(mismatchRes.body.mismatches.unknownPrimaryRole, true);
   assert.equal(mismatchRes.body.mismatches.fallbackRole, "readonly");
 
-  const customRoleRes = await adminApi(
-    "PUT",
-    "/api/projects/default_project/agents/qa_peer/auth",
-    {
-      defineRole: {
-        id: "custom-reviewer",
-        title: "Custom Reviewer",
-        description: "Readonly plus self schedule maintenance",
-        inherits: ["readonly", "schedule.maintain@self"],
-      },
-      role: "custom-reviewer",
+  const customRoleRes = await adminApi("PUT", "/api/projects/default_project/agents/qa_peer/auth", {
+    defineRole: {
+      id: "custom-reviewer",
+      title: "Custom Reviewer",
+      description: "Readonly plus self schedule maintenance",
+      inherits: ["readonly", "schedule.maintain@self"],
     },
-  );
+    role: "custom-reviewer",
+  });
   assert.equal(customRoleRes.status, 200);
   assert.equal(customRoleRes.body.role, "custom-reviewer");
   assert.deepEqual(customRoleRes.body.refinedRoutes["schedule.create"], ["self"]);
