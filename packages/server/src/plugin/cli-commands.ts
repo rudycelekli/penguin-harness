@@ -69,6 +69,7 @@ import type {
 import type { AppEnv } from "../auth/middleware.js";
 import type { Db, Hmr } from "../hmr/capabilities.js";
 import { HttpError } from "../http/errors.js";
+import { endpointOf } from "../http/app.js";
 import { badRequest, readJson, requireString } from "../http/validate.js";
 import { sessionDriverCaller } from "./cli-command-caller.js";
 import { pluginHostFrom } from "./host.js";
@@ -495,25 +496,20 @@ export function pluginCliCommandRoutes(deps: PluginCliCommandRouteDeps): Hono<Ap
   contributes: {
     "HttpModule.routes": [
       {
-        id: "cli.commands",
+        id: "cli.commands.list",
+        method: "GET",
         prefix: "/api/cli/commands",
         auth: "user",
+        role: "command.read",
         order: 66,
       },
-    ],
-    "AgentAuthPermissionProvider.roleBindings": [
       {
-        id: "cli.commands.bindings",
-        endpoints: {
-          "cli.commands": {
-            "GET /": "cli.commands.list",
-            "POST /run": "cli.commands.run",
-          },
-        },
-        bindings: {
-          "command.read": ["cli.commands.list"],
-          "command.all": ["cli.commands.run"],
-        },
+        id: "cli.commands.run",
+        method: "POST",
+        prefix: "/api/cli/commands/run",
+        auth: "user",
+        role: "command.all",
+        order: 66,
       },
     ],
   },
@@ -527,7 +523,8 @@ export class PluginCliCommandsProvider {
   @Use() private readonly projectConfig!: ProjectConfigStore;
   @Use() private readonly db!: Db;
   @Provide() pluginCliCommands!: PluginCliCommands;
-  @Bind("cli.commands") routes!: Hono<AppEnv>;
+  @Bind("cli.commands.list") listRoute!: Hono<AppEnv>;
+  @Bind("cli.commands.run") runRoute!: Hono<AppEnv>;
 
   setup({ contributions }: ClassCtx) {
     const machineId = new MachinesRepo(this.db as unknown as DatabaseSync).ownId();
@@ -578,12 +575,14 @@ export class PluginCliCommandsProvider {
       },
     };
     this.pluginCliCommands = pluginCliCommands;
-    this.routes = pluginCliCommandRoutes({
+    const group = pluginCliCommandRoutes({
       commands: pluginCliCommands,
       access: this.access,
       sessions: this.sessions,
       users: this.users,
       drivers: this.drivers,
     });
+    this.listRoute = endpointOf(group, "GET", "/");
+    this.runRoute = endpointOf(group, "POST", "/run");
   }
 }

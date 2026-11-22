@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import type { AdminUserCreateResponse, AdminUsersResponse } from "../../api/types.js";
 import { HttpError } from "../errors.js";
+import { endpointOf } from "../app.js";
 import { rejectInDesktopMode } from "./desktop.js";
 import type { DesktopService } from "../../services/desktop-service.js";
 import type { AppEnv } from "../../auth/middleware.js";
@@ -78,65 +79,92 @@ export function adminUsersRoutes(deps: AdminRouteDeps): Hono<AppEnv> {
     ],
     "HttpModule.routes": [
       {
-        id: "admin.users",
+        id: "admin.users.list",
+        method: "GET",
         prefix: "/api/admin/users",
         auth: "user",
+        role: "admin.read",
         order: 30,
       },
       {
-        id: "admin.settings",
+        id: "admin.users.create",
+        method: "POST",
+        prefix: "/api/admin/users",
+        auth: "user",
+        role: "admin.all",
+        order: 30,
+      },
+      {
+        id: "admin.users.setPassword",
+        method: "POST",
+        prefix: "/api/admin/users/:userId/password",
+        auth: "user",
+        role: "admin.all",
+        order: 30,
+      },
+      {
+        id: "admin.users.delete",
+        method: "DELETE",
+        prefix: "/api/admin/users/:userId",
+        auth: "user",
+        role: "admin.all",
+        order: 30,
+      },
+      {
+        id: "admin.settings.get",
+        method: "GET",
         prefix: "/api/admin/settings",
         auth: "user",
+        role: "admin.read",
         order: 40,
       },
       {
-        id: "admin.plugin-config",
+        id: "admin.settings.update",
+        method: "PUT",
+        prefix: "/api/admin/settings",
+        auth: "user",
+        role: "admin.maintain",
+        order: 40,
+      },
+      {
+        id: "admin.settings.listProxyProbes",
+        method: "GET",
+        prefix: "/api/admin/settings/proxy-probe",
+        auth: "user",
+        role: "admin.read",
+        order: 40,
+      },
+      {
+        id: "admin.settings.runProxyProbe",
+        method: "POST",
+        prefix: "/api/admin/settings/proxy-probe/:provider",
+        auth: "user",
+        role: "admin.maintain",
+        order: 40,
+      },
+      {
+        id: "admin.pluginConfig.get",
+        method: "GET",
         prefix: "/api/admin/plugin-config",
         auth: "user",
+        role: "admin.read",
         order: 45,
       },
-    ],
-    "AgentAuthPermissionProvider.roleBindings": [
       {
-        id: "admin.bindings",
-        endpoints: {
-          "admin.users": {
-            "GET /": "admin.users.list",
-            "POST /": "admin.users.create",
-            "POST /:userId/password": "admin.users.setPassword",
-            "DELETE /:userId": "admin.users.delete",
-          },
-          "admin.settings": {
-            "GET /": "admin.settings.get",
-            "PUT /": "admin.settings.update",
-            "GET /proxy-probe": "admin.settings.listProxyProbes",
-            "POST /proxy-probe/:provider": "admin.settings.runProxyProbe",
-          },
-          "admin.plugin-config": {
-            "GET /": "admin.pluginConfig.get",
-            "PUT /": "admin.pluginConfig.update",
-            "POST /action": "admin.pluginConfig.action",
-          },
-        },
-        bindings: {
-          "admin.read": [
-            "admin.users.list",
-            "admin.settings.get",
-            "admin.settings.listProxyProbes",
-            "admin.pluginConfig.get",
-          ],
-          "admin.maintain": [
-            "admin.settings.update",
-            "admin.settings.runProxyProbe",
-            "admin.pluginConfig.update",
-            "admin.pluginConfig.action",
-          ],
-          "admin.all": [
-            "admin.users.create",
-            "admin.users.setPassword",
-            "admin.users.delete",
-          ],
-        },
+        id: "admin.pluginConfig.update",
+        method: "PUT",
+        prefix: "/api/admin/plugin-config",
+        auth: "user",
+        role: "admin.maintain",
+        order: 45,
+      },
+      {
+        id: "admin.pluginConfig.action",
+        method: "POST",
+        prefix: "/api/admin/plugin-config/action",
+        auth: "user",
+        role: "admin.maintain",
+        order: 45,
       },
     ],
   },
@@ -147,21 +175,40 @@ export class AdminRoutes {
   @Use() private readonly proxy!: Proxy;
   @Use() private readonly settings!: Settings;
   @Use() private readonly pluginConfigAdmin!: PluginConfigAdmin;
-  @Bind("admin.users") usersRoutes!: Hono<AppEnv>;
-  @Bind("admin.settings") settingsRoutes!: Hono<AppEnv>;
-  @Bind("admin.plugin-config") pluginConfigRoutes!: Hono<AppEnv>;
+  @Bind("admin.users.list") usersListRoute!: Hono<AppEnv>;
+  @Bind("admin.users.create") usersCreateRoute!: Hono<AppEnv>;
+  @Bind("admin.users.setPassword") usersSetPasswordRoute!: Hono<AppEnv>;
+  @Bind("admin.users.delete") usersDeleteRoute!: Hono<AppEnv>;
+  @Bind("admin.settings.get") settingsGetRoute!: Hono<AppEnv>;
+  @Bind("admin.settings.update") settingsUpdateRoute!: Hono<AppEnv>;
+  @Bind("admin.settings.listProxyProbes") settingsListProxyProbesRoute!: Hono<AppEnv>;
+  @Bind("admin.settings.runProxyProbe") settingsRunProxyProbeRoute!: Hono<AppEnv>;
+  @Bind("admin.pluginConfig.get") pluginConfigGetRoute!: Hono<AppEnv>;
+  @Bind("admin.pluginConfig.update") pluginConfigUpdateRoute!: Hono<AppEnv>;
+  @Bind("admin.pluginConfig.action") pluginConfigActionRoute!: Hono<AppEnv>;
   setup({ resources }: ClassCtx) {
-    this.pluginConfigRoutes = adminPluginConfigRoutes(this.pluginConfigAdmin, {
+    const pcGroup = adminPluginConfigRoutes(this.pluginConfigAdmin, {
       // The host is claimed per request: the plugins of this generation are recorded after setup.
       icon: (plugin) => pluginPackageDisplayOf(pluginHostFrom(resources), plugin).icon,
     });
-    this.usersRoutes = adminUsersRoutes({
+    this.pluginConfigGetRoute = endpointOf(pcGroup, "GET", "/");
+    this.pluginConfigUpdateRoute = endpointOf(pcGroup, "PUT", "/");
+    this.pluginConfigActionRoute = endpointOf(pcGroup, "POST", "/action");
+    const uGroup = adminUsersRoutes({
       adminService: this.admin,
       desktop: this.desktop.current() as DesktopService | null,
     });
-    this.settingsRoutes = adminSettingsRoutes({
+    this.usersListRoute = endpointOf(uGroup, "GET", "/");
+    this.usersCreateRoute = endpointOf(uGroup, "POST", "/");
+    this.usersSetPasswordRoute = endpointOf(uGroup, "POST", "/:userId/password");
+    this.usersDeleteRoute = endpointOf(uGroup, "DELETE", "/:userId");
+    const sGroup = adminSettingsRoutes({
       proxyControl: (settings) => this.proxy.apply(settings),
       serverSettingsRepo: this.settings,
     });
+    this.settingsGetRoute = endpointOf(sGroup, "GET", "/");
+    this.settingsUpdateRoute = endpointOf(sGroup, "PUT", "/");
+    this.settingsListProxyProbesRoute = endpointOf(sGroup, "GET", "/proxy-probe");
+    this.settingsRunProxyProbeRoute = endpointOf(sGroup, "POST", "/proxy-probe/:provider");
   }
 }

@@ -1846,63 +1846,347 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         order: 6,
       },
       {
-        id: "sessions.models",
+        id: "model.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/models",
         auth: "user",
+        role: "model.read",
         order: 100,
       },
       {
-        id: "sessions.model-oauth",
+        id: "model.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/models",
+        auth: "user",
+        role: "model.all",
+        order: 100,
+      },
+      {
+        id: "model.updateProvider",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/models/providers/:provider",
+        auth: "user",
+        role: "model.all",
+        order: 100,
+      },
+      {
+        id: "model.syncPresets",
+        method: "POST",
+        prefix: "/api/projects/:projectId/models/sync-presets",
+        auth: "user",
+        role: "model.maintain",
+        order: 100,
+      },
+      {
+        id: "model.getBalance",
+        method: "GET",
+        prefix: "/api/projects/:projectId/models/balance",
+        auth: "user",
+        role: "model.read",
+        order: 100,
+      },
+      {
+        id: "model.setDefault",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/models/default",
+        auth: "user",
+        role: "model.maintain",
+        order: 100,
+      },
+      {
+        id: "model.test",
+        method: "POST",
+        prefix: "/api/projects/:projectId/models/test",
+        auth: "user",
+        role: "model.read",
+        order: 100,
+      },
+      {
+        id: "model.detect",
+        method: "POST",
+        prefix: "/api/projects/:projectId/models/detect",
+        auth: "user",
+        role: "model.read",
+        order: 100,
+      },
+      {
+        id: "model.listRemote",
+        method: "POST",
+        prefix: "/api/projects/:projectId/models/list",
+        auth: "user",
+        role: "model.read",
+        order: 100,
+      },
+      {
+        id: "model.detectVision",
+        method: "POST",
+        prefix: "/api/projects/:projectId/models/detect-vision",
+        auth: "user",
+        role: "model.read",
+        order: 100,
+      },
+      {
+        id: "model.oauth.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/model-oauth",
         auth: "user",
+        role: "model.read",
         order: 110,
       },
       {
-        id: "sessions.platform-auth",
-        prefix: "/api/projects/:projectId/platform-auth",
+        id: "model.oauth.start",
+        method: "POST",
+        prefix: "/api/projects/:projectId/model-oauth/start",
         auth: "user",
+        role: "model.all",
+        order: 110,
+      },
+      {
+        id: "model.oauth.submitCode",
+        method: "POST",
+        prefix: "/api/projects/:projectId/model-oauth/:flowId/code",
+        auth: "user",
+        role: "model.all",
+        order: 110,
+      },
+      {
+        id: "model.oauth.getStatus",
+        method: "GET",
+        prefix: "/api/projects/:projectId/model-oauth/:flowId",
+        auth: "user",
+        role: "model.read",
+        order: 110,
+      },
+      {
+        id: "model.platformAuth.start",
+        method: "POST",
+        prefix: "/api/projects/:projectId/platform-auth/start",
+        auth: "user",
+        role: "model.all",
         order: 115,
       },
       {
-        id: "sessions.modelscope-auth",
-        prefix: "/api/projects/:projectId/modelscope-auth",
+        id: "model.platformAuth.sync",
+        method: "POST",
+        prefix: "/api/projects/:projectId/platform-auth/sync",
         auth: "user",
+        role: "model.maintain",
+        order: 115,
+      },
+      {
+        id: "model.platformAuth.getStatus",
+        method: "GET",
+        prefix: "/api/projects/:projectId/platform-auth/:flowId/status",
+        auth: "user",
+        role: "model.read",
+        order: 115,
+      },
+      {
+        id: "model.platformAuth.retry",
+        method: "POST",
+        prefix: "/api/projects/:projectId/platform-auth/:flowId/retry",
+        auth: "user",
+        role: "model.all",
+        order: 115,
+      },
+      {
+        id: "model.platformAuth.cancel",
+        method: "POST",
+        prefix: "/api/projects/:projectId/platform-auth/:flowId/cancel",
+        auth: "user",
+        role: "model.all",
+        order: 115,
+      },
+      {
+        id: "model.modelscopeAuth.start",
+        method: "POST",
+        prefix: "/api/projects/:projectId/modelscope-auth/start",
+        auth: "user",
+        role: "model.all",
         order: 116,
       },
       {
-        id: "sessions.chat-defaults",
+        id: "model.modelscopeAuth.getStatus",
+        method: "GET",
+        prefix: "/api/projects/:projectId/modelscope-auth/:flowId/status",
+        auth: "user",
+        role: "model.read",
+        order: 116,
+      },
+      {
+        id: "model.modelscopeAuth.retry",
+        method: "POST",
+        prefix: "/api/projects/:projectId/modelscope-auth/:flowId/retry",
+        auth: "user",
+        role: "model.all",
+        order: 116,
+      },
+      {
+        id: "model.modelscopeAuth.cancel",
+        method: "POST",
+        prefix: "/api/projects/:projectId/modelscope-auth/:flowId/cancel",
+        auth: "user",
+        role: "model.all",
+        order: 116,
+      },
+      {
+        id: "model.chatDefaults.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/chat-defaults",
         auth: "user",
+        role: "model.read",
         order: 120,
       },
       {
-        id: "sessions.command-policy",
+        id: "model.chatDefaults.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/chat-defaults",
+        auth: "user",
+        role: "model.maintain",
+        order: 120,
+      },
+      {
+        id: "project.commandPolicy.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/command-policy",
         auth: "user",
+        role: "project.read",
         order: 130,
       },
       {
-        id: "sessions.agents",
+        id: "project.commandPolicy.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/command-policy",
+        auth: "user",
+        role: "project.all",
+        order: 130,
+      },
+      {
+        id: "agent.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents",
         auth: "user",
+        role: "agent.read",
         order: 140,
       },
       {
-        id: "sessions.agent-deletions",
-        prefix: "/api/projects/:projectId/agent-deletions",
+        id: "agent.create",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents",
         auth: "user",
+        role: "agent.maintain",
+        order: 140,
+      },
+      {
+        id: "agent.delete",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/agents/:agentId",
+        auth: "user",
+        role: "agent.all",
+        order: 140,
+      },
+      {
+        id: "agent.auth.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/auth",
+        auth: "user",
+        role: "agent.read",
+        order: 140,
+      },
+      {
+        id: "agent.auth.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/agents/:agentId/auth",
+        auth: "user",
+        role: "admin.maintain",
+        order: 140,
+      },
+      {
+        id: "agent.getDeletion",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agent-deletions/:deletionId",
+        auth: "user",
+        role: "agent.read",
         order: 141,
       },
       {
-        id: "sessions.agent-config",
+        id: "agent.config.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/config",
         auth: "user",
+        role: "agent.read",
         order: 170,
       },
       {
-        id: "sessions.vault",
+        id: "agent.config.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/agents/:agentId/config",
+        auth: "user",
+        role: "agent.maintain",
+        order: 170,
+      },
+      {
+        id: "agent.config.mcpTest",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/config/mcp-test",
+        auth: "user",
+        role: "agent.maintain",
+        order: 170,
+      },
+      {
+        id: "agent.config.kernelUpdate",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/config/kernel-update",
+        auth: "user",
+        role: "agent.maintain",
+        order: 170,
+      },
+      {
+        id: "agent.config.reset",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/config/reset",
+        auth: "user",
+        role: "agent.all",
+        order: 170,
+      },
+      {
+        id: "vault.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/vault",
         auth: "user",
+        role: "vault.read",
+        order: 180,
+      },
+      {
+        id: "vault.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/agents/:agentId/vault",
+        auth: "user",
+        role: "vault.maintain",
+        order: 180,
+      },
+      {
+        id: "vault.setEntry",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/agents/:agentId/vault/entries/:key",
+        auth: "user",
+        role: "vault.maintain",
+        order: 180,
+      },
+      {
+        id: "vault.deleteEntry",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/agents/:agentId/vault/entries/:key",
+        auth: "user",
+        role: "vault.all",
+        order: 180,
+      },
+      {
+        id: "vault.templatePlaceholder",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/vault/template-placeholder",
+        auth: "user",
+        role: "vault.maintain",
         order: 180,
       },
       {
@@ -1938,9 +2222,35 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         order: 256,
       },
       {
-        id: "sessions.usage",
+        id: "usage.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/usage",
         auth: "user",
+        role: "trace.read",
+        order: 260,
+      },
+      {
+        id: "usage.getModelTotals",
+        method: "GET",
+        prefix: "/api/projects/:projectId/usage/model-totals",
+        auth: "user",
+        role: "trace.read",
+        order: 260,
+      },
+      {
+        id: "usage.listErrors",
+        method: "GET",
+        prefix: "/api/projects/:projectId/usage/errors",
+        auth: "user",
+        role: "trace.read",
+        order: 260,
+      },
+      {
+        id: "usage.clearErrors",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/usage/errors",
+        auth: "user",
+        role: "trace.all",
         order: 260,
       },
       {
@@ -2376,136 +2686,6 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         order: 275,
       },
     ],
-    "AgentAuthPermissionProvider.roleBindings": [
-      {
-        id: "sessions.bindings",
-        endpoints: {
-          "sessions.models": {
-            "GET /": "model.list",
-            "PUT /": "model.update",
-            "PUT /providers/:provider": "model.updateProvider",
-            "POST /sync-presets": "model.syncPresets",
-            "GET /balance": "model.getBalance",
-            "PUT /default": "model.setDefault",
-            "POST /test": "model.test",
-            "POST /detect": "model.detect",
-            "POST /list": "model.listRemote",
-            "POST /detect-vision": "model.detectVision",
-          },
-          "sessions.model-oauth": {
-            "GET /": "model.oauth.list",
-            "POST /start": "model.oauth.start",
-            "POST /:flowId/code": "model.oauth.submitCode",
-            "GET /:flowId": "model.oauth.getStatus",
-          },
-          "sessions.platform-auth": {
-            "POST /start": "model.platformAuth.start",
-            "POST /sync": "model.platformAuth.sync",
-            "GET /:flowId/status": "model.platformAuth.getStatus",
-            "POST /:flowId/retry": "model.platformAuth.retry",
-            "POST /:flowId/cancel": "model.platformAuth.cancel",
-          },
-          "sessions.modelscope-auth": {
-            "POST /start": "model.modelscopeAuth.start",
-            "GET /:flowId/status": "model.modelscopeAuth.getStatus",
-            "POST /:flowId/retry": "model.modelscopeAuth.retry",
-            "POST /:flowId/cancel": "model.modelscopeAuth.cancel",
-          },
-          "sessions.chat-defaults": {
-            "GET /": "model.chatDefaults.get",
-            "PUT /": "model.chatDefaults.update",
-          },
-          "sessions.command-policy": {
-            "GET /": "project.commandPolicy.get",
-            "PUT /": "project.commandPolicy.update",
-          },
-          "sessions.agents": {
-            "GET /": "agent.list",
-            "POST /": "agent.create",
-            "DELETE /:agentId": "agent.delete",
-            "GET /:agentId/auth": "agent.auth.get",
-            "PUT /:agentId/auth": "agent.auth.update",
-          },
-          "sessions.agent-deletions": {
-            "GET /:deletionId": "agent.getDeletion",
-          },
-          "sessions.agent-config": {
-            "GET /": "agent.config.get",
-            "PUT /": "agent.config.update",
-            "POST /mcp-test": "agent.config.mcpTest",
-            "POST /kernel-update": "agent.config.kernelUpdate",
-            "POST /reset": "agent.config.reset",
-          },
-          "sessions.vault": {
-            "GET /": "vault.get",
-            "PUT /": "vault.update",
-            "PUT /entries/:key": "vault.setEntry",
-            "DELETE /entries/:key": "vault.deleteEntry",
-            "POST /template-placeholder": "vault.templatePlaceholder",
-          },
-          "sessions.usage": {
-            "GET /": "usage.get",
-            "GET /model-totals": "usage.getModelTotals",
-            "GET /errors": "usage.listErrors",
-            "DELETE /errors": "usage.clearErrors",
-          },
-        },
-        bindings: {
-          "model.read": [
-            "model.list",
-            "model.getBalance",
-            "model.test",
-            "model.detect",
-            "model.listRemote",
-            "model.detectVision",
-            "model.oauth.list",
-            "model.oauth.getStatus",
-            "model.platformAuth.getStatus",
-            "model.modelscopeAuth.getStatus",
-            "model.chatDefaults.get",
-          ],
-          "model.maintain": [
-            "model.setDefault",
-            "model.syncPresets",
-            "model.platformAuth.sync",
-            "model.chatDefaults.update",
-          ],
-          "model.all": [
-            "model.update",
-            "model.updateProvider",
-            "model.oauth.start",
-            "model.oauth.submitCode",
-            "model.platformAuth.start",
-            "model.platformAuth.retry",
-            "model.platformAuth.cancel",
-            "model.modelscopeAuth.start",
-            "model.modelscopeAuth.retry",
-            "model.modelscopeAuth.cancel",
-          ],
-          "vault.read": ["vault.get"],
-          "vault.maintain": ["vault.update", "vault.setEntry", "vault.templatePlaceholder"],
-          "vault.all": ["vault.deleteEntry"],
-          "agent.read": [
-            "agent.list",
-            "agent.getDeletion",
-            "agent.auth.get",
-            "agent.config.get",
-          ],
-          "agent.maintain": [
-            "agent.create",
-            "agent.config.update",
-            "agent.config.mcpTest",
-            "agent.config.kernelUpdate",
-          ],
-          "agent.all": ["agent.delete", "agent.config.reset"],
-          "admin.maintain": ["agent.auth.update"],
-          "project.read": ["project.commandPolicy.get"],
-          "project.all": ["project.commandPolicy.update"],
-          "trace.read": ["usage.get", "usage.getModelTotals", "usage.listErrors"],
-          "trace.all": ["usage.clearErrors"],
-        },
-      },
-    ],
   },
 })
 export class SessionApiRoutes {
@@ -2547,21 +2727,57 @@ export class SessionApiRoutes {
   /** Optional for trees without the model tools group: every model then gets the chat probe. */
   @Use() private readonly toolModelBindings?: ToolModelBindings;
   @Bind("sessions.model-oauth-callback") modelOauthCallbackRoutes!: Hono<AppEnv>;
-  @Bind("sessions.models") modelsRoutes!: Hono<AppEnv>;
-  @Bind("sessions.model-oauth") modelOauthRoutes!: Hono<AppEnv>;
-  @Bind("sessions.platform-auth") platformAuthRoutes!: Hono<AppEnv>;
-  @Bind("sessions.modelscope-auth") modelScopeAuthRoutes!: Hono<AppEnv>;
-  @Bind("sessions.chat-defaults") chatDefaultsRoutes!: Hono<AppEnv>;
-  @Bind("sessions.command-policy") commandPolicyRoutes!: Hono<AppEnv>;
-  @Bind("sessions.agents") agentsRoutes!: Hono<AppEnv>;
-  @Bind("sessions.agent-deletions") agentDeletionsRoutes!: Hono<AppEnv>;
-  @Bind("sessions.agent-config") agentConfigRoutes!: Hono<AppEnv>;
-  @Bind("sessions.vault") vaultRoutes!: Hono<AppEnv>;
+  @Bind("model.list") modelListRoute!: Hono<AppEnv>;
+  @Bind("model.update") modelUpdateRoute!: Hono<AppEnv>;
+  @Bind("model.updateProvider") modelUpdateProviderRoute!: Hono<AppEnv>;
+  @Bind("model.syncPresets") modelSyncPresetsRoute!: Hono<AppEnv>;
+  @Bind("model.getBalance") modelGetBalanceRoute!: Hono<AppEnv>;
+  @Bind("model.setDefault") modelSetDefaultRoute!: Hono<AppEnv>;
+  @Bind("model.test") modelTestRoute!: Hono<AppEnv>;
+  @Bind("model.detect") modelDetectRoute!: Hono<AppEnv>;
+  @Bind("model.listRemote") modelListRemoteRoute!: Hono<AppEnv>;
+  @Bind("model.detectVision") modelDetectVisionRoute!: Hono<AppEnv>;
+  @Bind("model.oauth.list") modelOauthListRoute!: Hono<AppEnv>;
+  @Bind("model.oauth.start") modelOauthStartRoute!: Hono<AppEnv>;
+  @Bind("model.oauth.submitCode") modelOauthSubmitCodeRoute!: Hono<AppEnv>;
+  @Bind("model.oauth.getStatus") modelOauthGetStatusRoute!: Hono<AppEnv>;
+  @Bind("model.platformAuth.start") platformAuthStartRoute!: Hono<AppEnv>;
+  @Bind("model.platformAuth.sync") platformAuthSyncRoute!: Hono<AppEnv>;
+  @Bind("model.platformAuth.getStatus") platformAuthGetStatusRoute!: Hono<AppEnv>;
+  @Bind("model.platformAuth.retry") platformAuthRetryRoute!: Hono<AppEnv>;
+  @Bind("model.platformAuth.cancel") platformAuthCancelRoute!: Hono<AppEnv>;
+  @Bind("model.modelscopeAuth.start") modelscopeAuthStartRoute!: Hono<AppEnv>;
+  @Bind("model.modelscopeAuth.getStatus") modelscopeAuthGetStatusRoute!: Hono<AppEnv>;
+  @Bind("model.modelscopeAuth.retry") modelscopeAuthRetryRoute!: Hono<AppEnv>;
+  @Bind("model.modelscopeAuth.cancel") modelscopeAuthCancelRoute!: Hono<AppEnv>;
+  @Bind("model.chatDefaults.get") chatDefaultsGetRoute!: Hono<AppEnv>;
+  @Bind("model.chatDefaults.update") chatDefaultsUpdateRoute!: Hono<AppEnv>;
+  @Bind("project.commandPolicy.get") commandPolicyGetRoute!: Hono<AppEnv>;
+  @Bind("project.commandPolicy.update") commandPolicyUpdateRoute!: Hono<AppEnv>;
+  @Bind("agent.list") agentListRoute!: Hono<AppEnv>;
+  @Bind("agent.create") agentCreateRoute!: Hono<AppEnv>;
+  @Bind("agent.delete") agentDeleteRoute!: Hono<AppEnv>;
+  @Bind("agent.auth.get") agentAuthGetRoute!: Hono<AppEnv>;
+  @Bind("agent.auth.update") agentAuthUpdateRoute!: Hono<AppEnv>;
+  @Bind("agent.getDeletion") agentGetDeletionRoute!: Hono<AppEnv>;
+  @Bind("agent.config.get") agentConfigGetRoute!: Hono<AppEnv>;
+  @Bind("agent.config.update") agentConfigUpdateRoute!: Hono<AppEnv>;
+  @Bind("agent.config.mcpTest") agentConfigMcpTestRoute!: Hono<AppEnv>;
+  @Bind("agent.config.kernelUpdate") agentConfigKernelUpdateRoute!: Hono<AppEnv>;
+  @Bind("agent.config.reset") agentConfigResetRoute!: Hono<AppEnv>;
+  @Bind("vault.get") vaultGetRoute!: Hono<AppEnv>;
+  @Bind("vault.update") vaultUpdateRoute!: Hono<AppEnv>;
+  @Bind("vault.setEntry") vaultSetEntryRoute!: Hono<AppEnv>;
+  @Bind("vault.deleteEntry") vaultDeleteEntryRoute!: Hono<AppEnv>;
+  @Bind("vault.templatePlaceholder") vaultTemplatePlaceholderRoute!: Hono<AppEnv>;
   @Bind("session.list") listSessionsRoute!: Hono<AppEnv>;
   @Bind("session.create") createSessionRoute!: Hono<AppEnv>;
   @Bind("session.listBatch") sessionsBatchRoutes!: Hono<AppEnv>;
   @Bind("session.archiveWorkspace") sessionsArchiveRoutes!: Hono<AppEnv>;
-  @Bind("sessions.usage") usageRoutes!: Hono<AppEnv>;
+  @Bind("usage.get") usageGetRoute!: Hono<AppEnv>;
+  @Bind("usage.getModelTotals") usageGetModelTotalsRoute!: Hono<AppEnv>;
+  @Bind("usage.listErrors") usageListErrorsRoute!: Hono<AppEnv>;
+  @Bind("usage.clearErrors") usageClearErrorsRoute!: Hono<AppEnv>;
   @Bind("workspace.listFiles") workspaceListFilesRoute!: Hono<AppEnv>;
   @Bind("workspace.readFile") workspaceReadFileRoute!: Hono<AppEnv>;
   @Bind("workspace.writeFile") workspaceWriteFileRoute!: Hono<AppEnv>;
@@ -2668,32 +2884,59 @@ export class SessionApiRoutes {
       sessionsRepo,
     };
     this.modelOauthCallbackRoutes = modelOAuthCallbackRoutes(modelOAuthDeps);
-    this.modelsRoutes = modelsRoutes({
+    const modelsGroup = modelsRoutes({
       ...modelDeps,
       penguinGoOrigin: this.config.penguinGoOrigin ?? normalizePenguinGoOrigin(undefined),
       ...(this.toolModelBindings !== undefined
         ? { toolModelBindings: this.toolModelBindings }
         : {}),
     });
-    this.modelOauthRoutes = modelOAuthRoutes(modelOAuthDeps);
-    this.platformAuthRoutes = platformAuthRoutes({ ...modelDeps, platformAuth: this.platformAuth });
-    this.modelScopeAuthRoutes = modelScopeAuthRoutes({
+    this.modelListRoute = endpointOf(modelsGroup, "GET", "/");
+    this.modelUpdateRoute = endpointOf(modelsGroup, "PUT", "/");
+    this.modelUpdateProviderRoute = endpointOf(modelsGroup, "PUT", "/providers/:provider");
+    this.modelSyncPresetsRoute = endpointOf(modelsGroup, "POST", "/sync-presets");
+    this.modelGetBalanceRoute = endpointOf(modelsGroup, "GET", "/balance");
+    this.modelSetDefaultRoute = endpointOf(modelsGroup, "PUT", "/default");
+    this.modelTestRoute = endpointOf(modelsGroup, "POST", "/test");
+    this.modelDetectRoute = endpointOf(modelsGroup, "POST", "/detect");
+    this.modelListRemoteRoute = endpointOf(modelsGroup, "POST", "/list");
+    this.modelDetectVisionRoute = endpointOf(modelsGroup, "POST", "/detect-vision");
+    const oauthGroup = modelOAuthRoutes(modelOAuthDeps);
+    this.modelOauthListRoute = endpointOf(oauthGroup, "GET", "/");
+    this.modelOauthStartRoute = endpointOf(oauthGroup, "POST", "/start");
+    this.modelOauthSubmitCodeRoute = endpointOf(oauthGroup, "POST", "/:flowId/code");
+    this.modelOauthGetStatusRoute = endpointOf(oauthGroup, "GET", "/:flowId");
+    const platformGroup = platformAuthRoutes({ ...modelDeps, platformAuth: this.platformAuth });
+    this.platformAuthStartRoute = endpointOf(platformGroup, "POST", "/start");
+    this.platformAuthSyncRoute = endpointOf(platformGroup, "POST", "/sync");
+    this.platformAuthGetStatusRoute = endpointOf(platformGroup, "GET", "/:flowId/status");
+    this.platformAuthRetryRoute = endpointOf(platformGroup, "POST", "/:flowId/retry");
+    this.platformAuthCancelRoute = endpointOf(platformGroup, "POST", "/:flowId/cancel");
+    const modelscopeGroup = modelScopeAuthRoutes({
       ...modelDeps,
       modelScopeAuth: this.modelScopeAuth,
     });
-    this.chatDefaultsRoutes = chatDefaultsRoutes({
+    this.modelscopeAuthStartRoute = endpointOf(modelscopeGroup, "POST", "/start");
+    this.modelscopeAuthGetStatusRoute = endpointOf(modelscopeGroup, "GET", "/:flowId/status");
+    this.modelscopeAuthRetryRoute = endpointOf(modelscopeGroup, "POST", "/:flowId/retry");
+    this.modelscopeAuthCancelRoute = endpointOf(modelscopeGroup, "POST", "/:flowId/cancel");
+    const chatDefaultsGroup = chatDefaultsRoutes({
       agentConfigService,
       projectConfigService,
       access,
       sandboxDefaults: () => sessionService.defaultsView(),
       machines: this.machines,
     });
-    this.commandPolicyRoutes = commandPolicyRoutes({
+    this.chatDefaultsGetRoute = endpointOf(chatDefaultsGroup, "GET", "/");
+    this.chatDefaultsUpdateRoute = endpointOf(chatDefaultsGroup, "PUT", "/");
+    const commandPolicyGroup = commandPolicyRoutes({
       projectConfigService,
       access,
       machines: this.machines,
     });
-    this.agentsRoutes = agentsRoutes({
+    this.commandPolicyGetRoute = endpointOf(commandPolicyGroup, "GET", "/");
+    this.commandPolicyUpdateRoute = endpointOf(commandPolicyGroup, "PUT", "/");
+    const agentsGroup = agentsRoutes({
       agentApi: this.agentApi,
       agentConfigService,
       agentService: this.agents,
@@ -2709,20 +2952,40 @@ export class SessionApiRoutes {
       drafts: this.drafts,
       agentAuth: this.agentAuth,
     });
-    this.agentDeletionsRoutes = agentDeletionsRoutes({ access, agentService: this.agents });
-    this.agentConfigRoutes = agentConfigRoutes({
+    this.agentListRoute = endpointOf(agentsGroup, "GET", "/");
+    this.agentCreateRoute = endpointOf(agentsGroup, "POST", "/");
+    this.agentDeleteRoute = endpointOf(agentsGroup, "DELETE", "/:agentId");
+    this.agentAuthGetRoute = endpointOf(agentsGroup, "GET", "/:agentId/auth");
+    this.agentAuthUpdateRoute = endpointOf(agentsGroup, "PUT", "/:agentId/auth");
+    const deletionsGroup = agentDeletionsRoutes({ access, agentService: this.agents });
+    this.agentGetDeletionRoute = endpointOf(deletionsGroup, "GET", "/:deletionId");
+    const agentConfigGroup = agentConfigRoutes({
       agentConfigService,
       manager,
       access,
       config: this.config,
     });
-    this.vaultRoutes = vaultRoutes({ agentConfigService, manager, access });
+    this.agentConfigGetRoute = endpointOf(agentConfigGroup, "GET", "/");
+    this.agentConfigUpdateRoute = endpointOf(agentConfigGroup, "PUT", "/");
+    this.agentConfigMcpTestRoute = endpointOf(agentConfigGroup, "POST", "/mcp-test");
+    this.agentConfigKernelUpdateRoute = endpointOf(agentConfigGroup, "POST", "/kernel-update");
+    this.agentConfigResetRoute = endpointOf(agentConfigGroup, "POST", "/reset");
+    const vaultGroup = vaultRoutes({ agentConfigService, manager, access });
+    this.vaultGetRoute = endpointOf(vaultGroup, "GET", "/");
+    this.vaultUpdateRoute = endpointOf(vaultGroup, "PUT", "/");
+    this.vaultSetEntryRoute = endpointOf(vaultGroup, "PUT", "/entries/:key");
+    this.vaultDeleteEntryRoute = endpointOf(vaultGroup, "DELETE", "/entries/:key");
+    this.vaultTemplatePlaceholderRoute = endpointOf(vaultGroup, "POST", "/template-placeholder");
     const agentSessions = agentSessionsRoutes(sessionsDeps);
     this.listSessionsRoute = endpointOf(agentSessions, "GET", "/");
     this.createSessionRoute = endpointOf(agentSessions, "POST", "/");
     this.sessionsBatchRoutes = endpointOf(sessionsBatchRoutes(sessionsDeps), "POST", "/");
     this.sessionsArchiveRoutes = endpointOf(sessionsArchiveRoutes(sessionsDeps), "POST", "/");
-    this.usageRoutes = usageRoutes({ access, usageService: this.usage });
+    const usageGroup = usageRoutes({ access, usageService: this.usage });
+    this.usageGetRoute = endpointOf(usageGroup, "GET", "/");
+    this.usageGetModelTotalsRoute = endpointOf(usageGroup, "GET", "/model-totals");
+    this.usageListErrorsRoute = endpointOf(usageGroup, "GET", "/errors");
+    this.usageClearErrorsRoute = endpointOf(usageGroup, "DELETE", "/errors");
     const wfGroup = workspaceFilesRoutes({
       access,
       workspaceFiles: this.workspaceFiles,

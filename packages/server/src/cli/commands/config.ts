@@ -133,7 +133,11 @@ export function registerConfigCommand(config: Command, t: Messages): void {
       process.stdout.write(`${t.vaultListTitle()}\n`);
       const width = Math.max(...res.entries.map((e) => e.key.length));
       for (const entry of res.entries) {
-        process.stdout.write(`${entry.key.padEnd(width)}  ${maskApiKey(entry.valueMasked)}\n`);
+        const masked =
+          entry.valueMasked.length === 9 && entry.valueMasked[4] === "…"
+            ? `****${entry.valueMasked.slice(-4)}`
+            : maskApiKey(entry.valueMasked);
+        process.stdout.write(`${entry.key.padEnd(width)}  ${masked}\n`);
       }
     });
 

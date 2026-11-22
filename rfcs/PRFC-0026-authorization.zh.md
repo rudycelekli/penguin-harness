@@ -66,7 +66,7 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 })
 ```
 
-组件用 `endpointOf(group, method, subPath)` 将单条路由贡献绑定到 `Hono` 路由组上的对应处理器；对按前缀挂载的多端点路由组，鉴权网关通过 `resolveHttpRouteId(groupId, method, subPath)` 将每个 `(method, subPath)` 子路由映射为稳定的细粒度路由 `id`。
+组件用 `endpointOf(group, method, subPath)` 将单条路由贡献绑定到 `Hono` 路由组上的对应处理器。
 
 角色预设组织为一棵声明式的有向无环角色树（`ROLE_TREE`）：
 
@@ -84,12 +84,11 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 `HttpModule.routes` 槽的数据类型包含以下字段：
 
 - `id: string`——路由或路由组的唯一标识，按 `<域>.<动作>` 或 `<域>.<子域>.<动作>` 命名（例如 `session.list`、`workspace.readFile`、`command.run`、`model.updateConfig`、`vault.set`、`org.ticket.start`）。
-- `method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"`——可选的单方法限定。指定时，宿主只在该 HTTP 方法与路径上挂载处理器；省略时，挂载整个子路由组，并在路由网关内按 `(groupId, method, subPath)` 解析出每个端点的细粒度路由 `id`。
+- `method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "ALL"`——可选的单方法限定。指定时，宿主只在该 HTTP 方法与路径上挂载处理器；省略时，挂载整个子路由组。
 - `prefix: string`——挂载在 HTTP 应用上的路径模式。
 - `auth: "user" | "token" | "none"`——路由的鉴权门类（`"user"` 接受人类会话、本机 API 令牌或被授权的 Agent 会话；`"token"` 仅接受本机 API 令牌；`"none"` 为公开路由）。
 - `order: number`——路由挂载顺序。
-- `endpoints?: Readonly<Record<string, string>>`——可选的多端点子路由映射表（键为 `"METHOD /subpath"`，值为细粒度路由 `id`），让模块或插件在贡献 Hono 路由组时直接注册子端点 `id`。
-- `role?: string` 与 `roles?: readonly string[]`——可选的角色绑定声明（支持 `<roleId>@<refinerId>`，例如 `"readonly"` 或 `["myPlugin.maintain", "general@self"]`），将当前路由（及 `endpoints` 中的子路由）直接授予指定角色节点。路由 `id` 与角色声明均须为精确标识，禁止使用 `*` 通配符。
+- `role?: string` 与 `roles?: readonly string[]`——可选的角色绑定声明（支持 `<roleId>@<refinerId>`，例如 `"readonly"` 或 `["myPlugin.maintain", "general@self"]`），将当前路由直接授予指定角色节点。路由 `id` 与角色声明均须为精确标识，禁止使用 `*` 通配符。
 
 当一个路由组件在一个 `Hono` 实例上定义多个动作时，`endpointOf(group, method, subPath)` 构造一个只响应指定方法与路径的轻量 `Hono` 包装，保留原路由组的中间件与错误处理器，并将请求分发到目标处理器。这样既保持组件内部共享依赖，又让每条端点在清单中拥有独立的路由 `id`。
 
@@ -127,7 +126,7 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 
 - `role?: string` 与 `routes?: readonly string[]`——将单个角色（支持 `<roleId>@<refinerId>`）绑定到一组精确的 HTTP 路由 `id`。
 - `bindings?: Readonly<Record<string, readonly string[]>>`——批量映射多个角色标识到各自的精确 HTTP 路由 `id` 列表。
-- `endpoints?: Readonly<Record<string, Readonly<Record<string, string>>>>` 与 `aliases?: Readonly<Record<string, string>>`——注册多端点路由组的子路由映射表（`groupId -> { "METHOD /subpath": routeId }`）及路由 `id` 兼容别名。
+- `aliases?: Readonly<Record<string, string>>`——注册路由 `id` 前缀兼容别名。
 
 ### 声明式角色树（`ROLE_TREE`）与权限范围
 

@@ -157,45 +157,84 @@ export class UpdateCheckService implements UpdateCheck {
   }
 }
 
+import { endpointOf } from "../http/app.js";
+
 export abstract class UpdateCheck extends Interface<Pick<UpdateCheckService, "check">>() {}
 
 @Component({
   contributes: {
     "HttpModule.routes": [
       {
-        id: "version",
+        id: "version.get",
+        method: "GET",
         prefix: "/api/version",
         auth: "user",
+        role: "system.read",
         order: 20,
       },
-    ],
-    "AgentAuthPermissionProvider.roleBindings": [
       {
-        id: "version.bindings",
-        endpoints: {
-          version: {
-            "GET /": "version.get",
-            "GET /history": "version.listHistory",
-            "GET /history/ifaces/:hash": "version.getHistoryIfaces",
-            "GET /history/diff": "version.getHistoryDiff",
-            "POST /history/rollback": "version.rollback",
-            "GET /update-check": "version.getUpdateCheck",
-            "GET /update": "version.getUpdate",
-            "POST /update": "version.startUpdate",
-            "POST /restart": "version.restart",
-          },
-        },
-        bindings: {
-          "system.read": [
-            "version.get",
-            "version.listHistory",
-            "version.getHistoryIfaces",
-            "version.getHistoryDiff",
-            "version.getUpdateCheck",
-            "version.getUpdate",
-          ],
-          "system.all": ["version.rollback", "version.startUpdate", "version.restart"],
-        },
+        id: "version.listHistory",
+        method: "GET",
+        prefix: "/api/version/history",
+        auth: "user",
+        role: "system.read",
+        order: 20,
+      },
+      {
+        id: "version.getHistoryIfaces",
+        method: "GET",
+        prefix: "/api/version/history/ifaces/:hash",
+        auth: "user",
+        role: "system.read",
+        order: 20,
+      },
+      {
+        id: "version.getHistoryDiff",
+        method: "GET",
+        prefix: "/api/version/history/diff",
+        auth: "user",
+        role: "system.read",
+        order: 20,
+      },
+      {
+        id: "version.rollback",
+        method: "POST",
+        prefix: "/api/version/history/rollback",
+        auth: "user",
+        role: "system.all",
+        order: 20,
+      },
+      {
+        id: "version.getUpdateCheck",
+        method: "GET",
+        prefix: "/api/version/update-check",
+        auth: "user",
+        role: "system.read",
+        order: 20,
+      },
+      {
+        id: "version.getUpdate",
+        method: "GET",
+        prefix: "/api/version/update",
+        auth: "user",
+        role: "system.read",
+        order: 20,
+      },
+      {
+        id: "version.startUpdate",
+        method: "POST",
+        prefix: "/api/version/update",
+        auth: "user",
+        role: "system.all",
+        order: 20,
+      },
+      {
+        id: "version.restart",
+        method: "POST",
+        prefix: "/api/version/restart",
+        auth: "user",
+        role: "system.all",
+        order: 20,
       },
     ],
   },
@@ -205,9 +244,17 @@ export class VersionRoutes {
   @Use() private readonly updateCheck!: UpdateCheck;
   @Use() private readonly updateJob!: UpdateJob;
   @Use() private readonly history!: HarnessHistoryIface;
-  @Bind("version") routes!: Hono<AppEnv>;
+  @Bind("version.get") getRoute!: Hono<AppEnv>;
+  @Bind("version.listHistory") listHistoryRoute!: Hono<AppEnv>;
+  @Bind("version.getHistoryIfaces") getHistoryIfacesRoute!: Hono<AppEnv>;
+  @Bind("version.getHistoryDiff") getHistoryDiffRoute!: Hono<AppEnv>;
+  @Bind("version.rollback") rollbackRoute!: Hono<AppEnv>;
+  @Bind("version.getUpdateCheck") getUpdateCheckRoute!: Hono<AppEnv>;
+  @Bind("version.getUpdate") getUpdateRoute!: Hono<AppEnv>;
+  @Bind("version.startUpdate") startUpdateRoute!: Hono<AppEnv>;
+  @Bind("version.restart") restartRoute!: Hono<AppEnv>;
   setup() {
-    this.routes = versionRoutes({
+    const group = versionRoutes({
       config: this.config,
       updateCheck: this.updateCheck,
       updateJob: this.updateJob,
@@ -215,5 +262,14 @@ export class VersionRoutes {
       restart: processRestart(),
       history: this.history,
     });
+    this.getRoute = endpointOf(group, "GET", "/");
+    this.listHistoryRoute = endpointOf(group, "GET", "/history");
+    this.getHistoryIfacesRoute = endpointOf(group, "GET", "/history/ifaces/:hash");
+    this.getHistoryDiffRoute = endpointOf(group, "GET", "/history/diff");
+    this.rollbackRoute = endpointOf(group, "POST", "/history/rollback");
+    this.getUpdateCheckRoute = endpointOf(group, "GET", "/update-check");
+    this.getUpdateRoute = endpointOf(group, "GET", "/update");
+    this.startUpdateRoute = endpointOf(group, "POST", "/update");
+    this.restartRoute = endpointOf(group, "POST", "/restart");
   }
 }

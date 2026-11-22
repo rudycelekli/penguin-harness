@@ -19,7 +19,6 @@ import {
   matchesRouteGrant,
   normalizeRouteId,
   parseRefinedGrant,
-  resolveHttpRouteId,
   resolveRouteRefiners,
 } from "../src/auth/agent-roles.js";
 import {
@@ -132,28 +131,7 @@ describe("the agent role tree and route catalog", () => {
     expect(expandRoleGrant("system-maintainer").agentApi).toBe(true);
   });
 
-  it("resolves group sub-routes to fine-grained route ids and normalizes agents.messaging.<channel>", () => {
-    expect(resolveHttpRouteId("sessions.agents", "GET", "/")).toBe("agent.list");
-    expect(resolveHttpRouteId("sessions.agents", "DELETE", "/:agentId")).toBe("agent.delete");
-    expect(resolveHttpRouteId("org", "POST", "/:orgId/tickets/:ticketId/start")).toBe(
-      "org.ticket.start",
-    );
-    expect(resolveHttpRouteId("agents.feishu", "GET", "/")).toBe("agents.messaging.feishu.get");
-    expect(resolveHttpRouteId("agents.messaging.feishu", "PUT", "/")).toBe(
-      "agents.messaging.feishu.update",
-    );
-    expect(
-      resolveHttpRouteId("messaging.session-routes", "GET", "/:sessionId/messaging/feishu"),
-    ).toBe("agents.messaging.feishu.get");
-    expect(
-      resolveHttpRouteId("messaging.session-routes", "POST", "/:sessionId/messaging/wechat/scan"),
-    ).toBe("agents.messaging.wechat.scanStart");
-    expect(resolveHttpRouteId("messaging.accounts", "GET", "/accounts")).toBe(
-      "messaging.listAccounts",
-    );
-    expect(resolveHttpRouteId("messaging.account-holders", "GET", "/account-holders")).toBe(
-      "messaging.listAccountHolders",
-    );
+  it("normalizes agents.messaging.<channel> route aliases", () => {
     expect(normalizeRouteId("agents.feishu.get")).toBe("agents.messaging.feishu.get");
     expect(normalizeRouteId("messaging.feishu.update")).toBe("agents.messaging.feishu.update");
     expect(expandRoleGrant("agents.messaging.read").apiIds).toContain(
@@ -345,14 +323,26 @@ describe("the agent auth service", () => {
             code: endpointOf(sessionsGroup, "POST", "/"),
           },
           {
-            id: "sessions.agent-config",
+            id: "agent.config.get",
             from: "test",
             data: {
+              method: "GET",
               prefix: "/api/projects/:projectId/agents/:agentId/config",
               auth: "user",
               order: 245,
             },
-            code: agentConfigGroup,
+            code: endpointOf(agentConfigGroup, "GET", "/"),
+          },
+          {
+            id: "agent.config.update",
+            from: "test",
+            data: {
+              method: "PUT",
+              prefix: "/api/projects/:projectId/agents/:agentId/config",
+              auth: "user",
+              order: 245,
+            },
+            code: endpointOf(agentConfigGroup, "PUT", "/"),
           },
         ],
       },
@@ -537,24 +527,37 @@ describe("auth refiners (<roleOrRoute>@<refinerId>)", () => {
         ],
         routes: [
           {
-            id: "sessions.agent-config",
+            id: "agent.config.get",
             from: "test",
             data: {
+              method: "GET",
               prefix: "/api/projects/:projectId/agents/:agentId/config",
               auth: "user",
               order: 245,
             },
-            code: agentConfigGroup,
+            code: endpointOf(agentConfigGroup, "GET", "/"),
           },
           {
-            id: "schedules",
+            id: "agent.config.update",
             from: "test",
             data: {
-              prefix: "/api/projects/:projectId/agents/:agentId/schedule",
+              method: "PUT",
+              prefix: "/api/projects/:projectId/agents/:agentId/config",
+              auth: "user",
+              order: 245,
+            },
+            code: endpointOf(agentConfigGroup, "PUT", "/"),
+          },
+          {
+            id: "schedule.upsert",
+            from: "test",
+            data: {
+              method: "PUT",
+              prefix: "/api/projects/:projectId/agents/:agentId/schedule/:name",
               auth: "user",
               order: 246,
             },
-            code: scheduleGroup,
+            code: endpointOf(scheduleGroup, "PUT", "/:name"),
           },
         ],
       },
@@ -630,16 +633,13 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
   it("allows modules and plugins to contribute roles, declare route role/roles, contribute unified role->http bindings, and rejects wildcards", () => {
     const registry = new RoleRegistry();
 
-    // 1. Register multi-endpoint route group via registerRoute
-    registry.registerRoute(
-      {
-        id: "billing.invoices",
-        endpoints: {
-          "GET /": "billing.invoices.list",
-          "POST /": "billing.invoices.create",
-          "DELETE /:id": "billing.invoices.delete",
-        },
-      },
+    // 1. Register individual routes via registerRoutes
+    registry.registerRoutes(
+      [
+        { id: "billing.invoices.list" },
+        { id: "billing.invoices.create" },
+        { id: "billing.invoices.delete" },
+      ],
       "BillingRoutesModule",
     );
 
@@ -683,13 +683,6 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
         },
       ],
       "BillingBindingModule",
-    );
-
-    expect(registry.resolveHttpRouteId("billing.invoices", "GET", "/")).toBe(
-      "billing.invoices.list",
-    );
-    expect(registry.resolveHttpRouteId("billing.invoices", "DELETE", "/:id")).toBe(
-      "billing.invoices.delete",
     );
 
     const readonlyGrant = registry.expandRoleGrant("readonly");
@@ -829,19 +822,37 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
         ],
         routes: [
           {
-            id: "myPlugin.items",
+            id: "myPlugin.items.list",
             from: "MyPluginRoutesModule",
             data: {
+              method: "GET",
               prefix: "/api/projects/:projectId/agents/:agentId/my-plugin/items",
               auth: "user",
               order: 600,
-              endpoints: {
-                "GET /": "myPlugin.items.list",
-                "PUT /": "myPlugin.items.update",
-                "DELETE /:itemId": "myPlugin.items.delete",
-              },
             },
-            code: pluginGroup,
+            code: endpointOf(pluginGroup, "GET", "/"),
+          },
+          {
+            id: "myPlugin.items.update",
+            from: "MyPluginRoutesModule",
+            data: {
+              method: "PUT",
+              prefix: "/api/projects/:projectId/agents/:agentId/my-plugin/items",
+              auth: "user",
+              order: 600,
+            },
+            code: endpointOf(pluginGroup, "PUT", "/"),
+          },
+          {
+            id: "myPlugin.items.delete",
+            from: "MyPluginRoutesModule",
+            data: {
+              method: "DELETE",
+              prefix: "/api/projects/:projectId/agents/:agentId/my-plugin/items/:itemId",
+              auth: "user",
+              order: 600,
+            },
+            code: endpointOf(pluginGroup, "DELETE", "/:itemId"),
           },
           {
             id: "myPlugin.health",

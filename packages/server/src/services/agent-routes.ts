@@ -1,6 +1,7 @@
 import { Bind, Component, Use } from "@prismshadow/penguin-core/kernel";
 import type { AppEnv } from "../auth/middleware.js";
 import type { Hono } from "hono";
+import { endpointOf } from "../http/app.js";
 import type { Clock, Config, Paths } from "../hmr/capabilities.js";
 import { memoryRoutes } from "../http/routes/memory.js";
 import { benchmarksRoutes } from "../http/routes/benchmarks.js";
@@ -88,127 +89,295 @@ import type { Workbenches } from "../mechanisms/workbenches.js";
     ],
     "HttpModule.routes": [
       {
-        id: "agents.benchmarks",
+        id: "benchmark.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/benchmarks",
         auth: "user",
+        role: "benchmark.read",
         order: 165,
       },
       {
-        id: "agents.memory",
+        id: "benchmark.create",
+        method: "POST",
+        prefix: "/api/projects/:projectId/benchmarks",
+        auth: "user",
+        role: "benchmark.maintain",
+        order: 165,
+      },
+      {
+        id: "benchmark.delete",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/benchmarks/:benchmarkId",
+        auth: "user",
+        role: "benchmark.all",
+        order: 165,
+      },
+      {
+        id: "benchmark.importArchive",
+        method: "POST",
+        prefix: "/api/projects/:projectId/benchmarks/archive",
+        auth: "user",
+        role: "benchmark.maintain",
+        order: 165,
+      },
+      {
+        id: "benchmark.exportArchive",
+        method: "GET",
+        prefix: "/api/projects/:projectId/benchmarks/:benchmarkId/archive",
+        auth: "user",
+        role: "benchmark.read",
+        order: 165,
+      },
+      {
+        id: "benchmark.listCases",
+        method: "GET",
+        prefix: "/api/projects/:projectId/benchmarks/:benchmarkId/cases",
+        auth: "user",
+        role: "benchmark.read",
+        order: 165,
+      },
+      {
+        id: "benchmark.listCaseFiles",
+        method: "GET",
+        prefix: "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files",
+        auth: "user",
+        role: "benchmark.read",
+        order: 165,
+      },
+      {
+        id: "benchmark.readCaseFile",
+        method: "GET",
+        prefix: "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files/content",
+        auth: "user",
+        role: "benchmark.read",
+        order: 165,
+      },
+      {
+        id: "benchmark.listRubricFiles",
+        method: "GET",
+        prefix: "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files",
+        auth: "user",
+        role: "benchmark.read",
+        order: 165,
+      },
+      {
+        id: "benchmark.readRubricFile",
+        method: "GET",
+        prefix:
+          "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files/content",
+        auth: "user",
+        role: "benchmark.read",
+        order: 165,
+      },
+      {
+        id: "memory.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/memory",
         auth: "user",
+        role: "memory.read",
         order: 190,
       },
       {
-        id: "agents.skills",
+        id: "memory.templatePlaceholder",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/memory/template-placeholder",
+        auth: "user",
+        role: "memory.maintain",
+        order: 190,
+      },
+      {
+        id: "memory.listFiles",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files",
+        auth: "user",
+        role: "memory.read",
+        order: 190,
+      },
+      {
+        id: "memory.readFile",
+        method: "GET",
+        prefix:
+          "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:filePath{.+}",
+        auth: "user",
+        role: "memory.read",
+        order: 190,
+      },
+      {
+        id: "memory.export",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/export",
+        auth: "user",
+        role: "memory.read",
+        order: 190,
+      },
+      {
+        id: "memory.import",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/import",
+        auth: "user",
+        role: "memory.maintain",
+        order: 190,
+      },
+      {
+        id: "memory.deleteFile",
+        method: "DELETE",
+        prefix:
+          "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:filePath{.+}",
+        auth: "user",
+        role: "memory.all",
+        order: 190,
+      },
+      {
+        id: "skill.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/skills",
         auth: "user",
+        role: "skill.read",
         order: 220,
       },
       {
-        id: "agents.api",
+        id: "skill.templatePlaceholder",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/skills/template-placeholder",
+        auth: "user",
+        role: "skill.maintain",
+        order: 220,
+      },
+      {
+        id: "skill.importArchive",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/skills/archive",
+        auth: "user",
+        role: "skill.maintain",
+        order: 220,
+      },
+      {
+        id: "skill.exportArchive",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/skills/:name/archive",
+        auth: "user",
+        role: "skill.read",
+        order: 220,
+      },
+      {
+        id: "skill.getIcon",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/skills/:name/icon",
+        auth: "user",
+        role: "skill.read",
+        order: 220,
+      },
+      {
+        id: "skill.delete",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/agents/:agentId/skills/:name",
+        auth: "user",
+        role: "skill.all",
+        order: 220,
+      },
+      {
+        id: "agent.api.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/api",
         auth: "user",
+        role: "agent.read",
         order: 225,
       },
       {
-        id: "agents.avatar",
+        id: "agent.api.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/agents/:agentId/api",
+        auth: "user",
+        role: "agent.all",
+        order: 225,
+      },
+      {
+        id: "agent.api.createKey",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/api/keys",
+        auth: "user",
+        role: "agent.all",
+        order: 225,
+      },
+      {
+        id: "agent.api.deleteKey",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/agents/:agentId/api/keys/:keyId",
+        auth: "user",
+        role: "agent.all",
+        order: 225,
+      },
+      {
+        id: "agent.avatar.get",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/avatar",
         auth: "user",
+        role: "agent.read",
         order: 228,
       },
       {
-        id: "agents.archive",
-        prefix: "/api/projects/:projectId/agents",
+        id: "agent.avatar.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/agents/:agentId/avatar",
         auth: "user",
+        role: "agent.maintain",
+        order: 228,
+      },
+      {
+        id: "agent.archive.export",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/archive",
+        auth: "user",
+        role: "agent.read",
         order: 230,
       },
       {
-        id: "agents.traces",
+        id: "agent.archive.import",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/import",
+        auth: "user",
+        role: "agent.maintain",
+        order: 230,
+      },
+      {
+        id: "trace.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/traces",
         auth: "user",
+        role: "trace.read",
         order: 240,
       },
-    ],
-    "AgentAuthPermissionProvider.roleBindings": [
       {
-        id: "agents.routes.bindings",
-        endpoints: {
-          "agents.avatar": {
-            "GET /": "agent.avatar.get",
-            "PUT /": "agent.avatar.update",
-          },
-          "agents.archive": {
-            "GET /:agentId/archive": "agent.archive.export",
-            "POST /import": "agent.archive.import",
-          },
-          "agents.api": {
-            "GET /": "agent.api.get",
-            "PUT /": "agent.api.update",
-            "POST /keys": "agent.api.createKey",
-            "DELETE /keys/:keyId": "agent.api.deleteKey",
-          },
-          "agents.memory": {
-            "GET /": "memory.get",
-            "POST /template-placeholder": "memory.templatePlaceholder",
-            "GET /scopes/:scopeKey/files": "memory.listFiles",
-            "GET /scopes/:scopeKey/files/:filePath{.+}": "memory.readFile",
-            "GET /scopes/:scopeKey/export": "memory.export",
-            "POST /scopes/:scopeKey/import": "memory.import",
-            "DELETE /scopes/:scopeKey/files/:filePath{.+}": "memory.deleteFile",
-          },
-          "agents.skills": {
-            "GET /": "skill.list",
-            "POST /template-placeholder": "skill.templatePlaceholder",
-            "POST /archive": "skill.importArchive",
-            "GET /:name/archive": "skill.exportArchive",
-            "GET /:name/icon": "skill.getIcon",
-            "DELETE /:name": "skill.delete",
-          },
-          "agents.traces": {
-            "GET /": "trace.list",
-            "GET /:sessionId/:index": "trace.get",
-            "GET /:sessionId/:index/analysis": "trace.getAnalysis",
-            "GET /:sessionId/:index/download": "trace.download",
-            "POST /import": "trace.import",
-          },
-          "agents.benchmarks": {
-            "GET /": "benchmark.list",
-            "POST /": "benchmark.create",
-            "DELETE /:benchmarkId": "benchmark.delete",
-            "POST /archive": "benchmark.importArchive",
-            "GET /:benchmarkId/archive": "benchmark.exportArchive",
-            "GET /:benchmarkId/cases": "benchmark.listCases",
-            "GET /:benchmarkId/cases/:caseId/files": "benchmark.listCaseFiles",
-            "GET /:benchmarkId/cases/:caseId/files/content": "benchmark.readCaseFile",
-            "GET /:benchmarkId/cases/:caseId/rubric/files": "benchmark.listRubricFiles",
-            "GET /:benchmarkId/cases/:caseId/rubric/files/content": "benchmark.readRubricFile",
-          },
-        },
-        bindings: {
-          "agent.read": ["agent.avatar.get", "agent.archive.export", "agent.api.get"],
-          "agent.maintain": ["agent.avatar.update", "agent.archive.import"],
-          "agent.all": ["agent.api.update", "agent.api.createKey", "agent.api.deleteKey"],
-          "memory.read": ["memory.get", "memory.listFiles", "memory.readFile", "memory.export"],
-          "memory.maintain": ["memory.templatePlaceholder", "memory.import"],
-          "memory.all": ["memory.deleteFile"],
-          "skill.read": ["skill.list", "skill.exportArchive", "skill.getIcon"],
-          "skill.maintain": ["skill.templatePlaceholder", "skill.importArchive"],
-          "skill.all": ["skill.delete"],
-          "trace.read": ["trace.list", "trace.get", "trace.getAnalysis", "trace.download"],
-          "trace.maintain": ["trace.import"],
-          "benchmark.read": [
-            "benchmark.list",
-            "benchmark.exportArchive",
-            "benchmark.listCases",
-            "benchmark.listCaseFiles",
-            "benchmark.readCaseFile",
-            "benchmark.listRubricFiles",
-            "benchmark.readRubricFile",
-          ],
-          "benchmark.maintain": ["benchmark.create", "benchmark.importArchive"],
-          "benchmark.all": ["benchmark.delete"],
-        },
+        id: "trace.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index",
+        auth: "user",
+        role: "trace.read",
+        order: 240,
+      },
+      {
+        id: "trace.getAnalysis",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/analysis",
+        auth: "user",
+        role: "trace.read",
+        order: 240,
+      },
+      {
+        id: "trace.download",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/download",
+        auth: "user",
+        role: "trace.read",
+        order: 240,
+      },
+      {
+        id: "trace.import",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/traces/import",
+        auth: "user",
+        role: "trace.maintain",
+        order: 240,
       },
     ],
   },
@@ -231,22 +400,98 @@ export class AgentRoutes {
   @Use() private readonly traceIndex!: TraceIndex;
   @Use() private readonly traceStore!: TraceIndexStore;
   @Use() private readonly sessions!: SessionIndex;
-  @Bind("agents.memory") memoryRoutes!: Hono<AppEnv>;
-  @Bind("agents.benchmarks") benchmarksRoutes!: Hono<AppEnv>;
-  @Bind("agents.skills") skillsRoutes!: Hono<AppEnv>;
-  @Bind("agents.api") apiRoutes!: Hono<AppEnv>;
-  @Bind("agents.avatar") avatarRoutes!: Hono<AppEnv>;
-  @Bind("agents.archive") archiveRoutes!: Hono<AppEnv>;
-  @Bind("agents.traces") tracesRoutes!: Hono<AppEnv>;
+  @Bind("benchmark.list") benchmarkListRoute!: Hono<AppEnv>;
+  @Bind("benchmark.create") benchmarkCreateRoute!: Hono<AppEnv>;
+  @Bind("benchmark.delete") benchmarkDeleteRoute!: Hono<AppEnv>;
+  @Bind("benchmark.importArchive") benchmarkImportArchiveRoute!: Hono<AppEnv>;
+  @Bind("benchmark.exportArchive") benchmarkExportArchiveRoute!: Hono<AppEnv>;
+  @Bind("benchmark.listCases") benchmarkListCasesRoute!: Hono<AppEnv>;
+  @Bind("benchmark.listCaseFiles") benchmarkListCaseFilesRoute!: Hono<AppEnv>;
+  @Bind("benchmark.readCaseFile") benchmarkReadCaseFileRoute!: Hono<AppEnv>;
+  @Bind("benchmark.listRubricFiles") benchmarkListRubricFilesRoute!: Hono<AppEnv>;
+  @Bind("benchmark.readRubricFile") benchmarkReadRubricFileRoute!: Hono<AppEnv>;
+  @Bind("memory.get") memoryGetRoute!: Hono<AppEnv>;
+  @Bind("memory.templatePlaceholder") memoryTemplatePlaceholderRoute!: Hono<AppEnv>;
+  @Bind("memory.listFiles") memoryListFilesRoute!: Hono<AppEnv>;
+  @Bind("memory.readFile") memoryReadFileRoute!: Hono<AppEnv>;
+  @Bind("memory.export") memoryExportRoute!: Hono<AppEnv>;
+  @Bind("memory.import") memoryImportRoute!: Hono<AppEnv>;
+  @Bind("memory.deleteFile") memoryDeleteFileRoute!: Hono<AppEnv>;
+  @Bind("skill.list") skillListRoute!: Hono<AppEnv>;
+  @Bind("skill.templatePlaceholder") skillTemplatePlaceholderRoute!: Hono<AppEnv>;
+  @Bind("skill.importArchive") skillImportArchiveRoute!: Hono<AppEnv>;
+  @Bind("skill.exportArchive") skillExportArchiveRoute!: Hono<AppEnv>;
+  @Bind("skill.getIcon") skillGetIconRoute!: Hono<AppEnv>;
+  @Bind("skill.delete") skillDeleteRoute!: Hono<AppEnv>;
+  @Bind("agent.api.get") apiGetRoute!: Hono<AppEnv>;
+  @Bind("agent.api.update") apiUpdateRoute!: Hono<AppEnv>;
+  @Bind("agent.api.createKey") apiCreateKeyRoute!: Hono<AppEnv>;
+  @Bind("agent.api.deleteKey") apiDeleteKeyRoute!: Hono<AppEnv>;
+  @Bind("agent.avatar.get") avatarGetRoute!: Hono<AppEnv>;
+  @Bind("agent.avatar.update") avatarUpdateRoute!: Hono<AppEnv>;
+  @Bind("agent.archive.export") archiveExportRoute!: Hono<AppEnv>;
+  @Bind("agent.archive.import") archiveImportRoute!: Hono<AppEnv>;
+  @Bind("trace.list") traceListRoute!: Hono<AppEnv>;
+  @Bind("trace.get") traceGetRoute!: Hono<AppEnv>;
+  @Bind("trace.getAnalysis") traceGetAnalysisRoute!: Hono<AppEnv>;
+  @Bind("trace.download") traceDownloadRoute!: Hono<AppEnv>;
+  @Bind("trace.import") traceImportRoute!: Hono<AppEnv>;
 
   setup() {
     const access = this.access;
     const agentConfigService = this.agentConfig;
-    this.memoryRoutes = memoryRoutes({ memoryService: this.memory, access });
-    this.benchmarksRoutes = benchmarksRoutes({ benchmarks: this.benchmarks, access });
-    this.skillsRoutes = agentSkillsRoutes({ agentConfigService, config: this.config, access });
+    const mGroup = memoryRoutes({ memoryService: this.memory, access });
+    this.memoryGetRoute = endpointOf(mGroup, "GET", "/");
+    this.memoryTemplatePlaceholderRoute = endpointOf(mGroup, "POST", "/template-placeholder");
+    this.memoryListFilesRoute = endpointOf(mGroup, "GET", "/scopes/:scopeKey/files");
+    this.memoryReadFileRoute = endpointOf(
+      mGroup,
+      "GET",
+      "/scopes/:scopeKey/files/:filePath{.+}",
+    );
+    this.memoryExportRoute = endpointOf(mGroup, "GET", "/scopes/:scopeKey/export");
+    this.memoryImportRoute = endpointOf(mGroup, "POST", "/scopes/:scopeKey/import");
+    this.memoryDeleteFileRoute = endpointOf(
+      mGroup,
+      "DELETE",
+      "/scopes/:scopeKey/files/:filePath{.+}",
+    );
+    const bGroup = benchmarksRoutes({ benchmarks: this.benchmarks, access });
+    this.benchmarkListRoute = endpointOf(bGroup, "GET", "/");
+    this.benchmarkCreateRoute = endpointOf(bGroup, "POST", "/");
+    this.benchmarkDeleteRoute = endpointOf(bGroup, "DELETE", "/:benchmarkId");
+    this.benchmarkImportArchiveRoute = endpointOf(bGroup, "POST", "/archive");
+    this.benchmarkExportArchiveRoute = endpointOf(bGroup, "GET", "/:benchmarkId/archive");
+    this.benchmarkListCasesRoute = endpointOf(bGroup, "GET", "/:benchmarkId/cases");
+    this.benchmarkListCaseFilesRoute = endpointOf(
+      bGroup,
+      "GET",
+      "/:benchmarkId/cases/:caseId/files",
+    );
+    this.benchmarkReadCaseFileRoute = endpointOf(
+      bGroup,
+      "GET",
+      "/:benchmarkId/cases/:caseId/files/content",
+    );
+    this.benchmarkListRubricFilesRoute = endpointOf(
+      bGroup,
+      "GET",
+      "/:benchmarkId/cases/:caseId/rubric/files",
+    );
+    this.benchmarkReadRubricFileRoute = endpointOf(
+      bGroup,
+      "GET",
+      "/:benchmarkId/cases/:caseId/rubric/files/content",
+    );
+    const sGroup = agentSkillsRoutes({ agentConfigService, config: this.config, access });
+    this.skillListRoute = endpointOf(sGroup, "GET", "/");
+    this.skillTemplatePlaceholderRoute = endpointOf(sGroup, "POST", "/template-placeholder");
+    this.skillImportArchiveRoute = endpointOf(sGroup, "POST", "/archive");
+    this.skillExportArchiveRoute = endpointOf(sGroup, "GET", "/:name/archive");
+    this.skillGetIconRoute = endpointOf(sGroup, "GET", "/:name/icon");
+    this.skillDeleteRoute = endpointOf(sGroup, "DELETE", "/:name");
     const clock = this.clock;
-    this.apiRoutes = agentApiRoutes({
+    const apiGroup = agentApiRoutes({
       agentApi: this.agentApi,
       projectConfig: this.projectConfig,
       agentConfigService,
@@ -254,12 +499,18 @@ export class AgentRoutes {
       settings: this.settings,
       now: () => clock.now(),
     });
-    this.avatarRoutes = agentAvatarRoutes({
+    this.apiGetRoute = endpointOf(apiGroup, "GET", "/");
+    this.apiUpdateRoute = endpointOf(apiGroup, "PUT", "/");
+    this.apiCreateKeyRoute = endpointOf(apiGroup, "POST", "/keys");
+    this.apiDeleteKeyRoute = endpointOf(apiGroup, "DELETE", "/keys/:keyId");
+    const avGroup = agentAvatarRoutes({
       root: this.paths.root,
       agentConfigService,
       access,
     });
-    this.archiveRoutes = agentArchiveRoutes({
+    this.avatarGetRoute = endpointOf(avGroup, "GET", "/");
+    this.avatarUpdateRoute = endpointOf(avGroup, "PUT", "/");
+    const arGroup = agentArchiveRoutes({
       root: this.paths.root,
       access,
       agentConfig: agentConfigService,
@@ -272,10 +523,17 @@ export class AgentRoutes {
       sessions: this.sessions,
       now: () => clock.now(),
     });
-    this.tracesRoutes = agentTracesRoutes({
+    this.archiveExportRoute = endpointOf(arGroup, "GET", "/:agentId/archive");
+    this.archiveImportRoute = endpointOf(arGroup, "POST", "/import");
+    const tGroup = agentTracesRoutes({
       agentConfigService,
       access,
       traceService: this.traces,
     });
+    this.traceListRoute = endpointOf(tGroup, "GET", "/");
+    this.traceGetRoute = endpointOf(tGroup, "GET", "/:sessionId/:index");
+    this.traceGetAnalysisRoute = endpointOf(tGroup, "GET", "/:sessionId/:index/analysis");
+    this.traceDownloadRoute = endpointOf(tGroup, "GET", "/:sessionId/:index/download");
+    this.traceImportRoute = endpointOf(tGroup, "POST", "/import");
   }
 }

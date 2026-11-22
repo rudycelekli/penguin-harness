@@ -33,7 +33,6 @@ export interface RoleContribution {
 
 export interface RouteRoleRegistration {
   id: string;
-  endpoints?: { readonly [methodPath: string]: string };
   role?: string;
   roles?: readonly string[];
   sourceModule?: string;
@@ -44,7 +43,6 @@ export interface RoleHttpBindingContribution {
   routes?: readonly string[];
   bindings?: { readonly [roleId: string]: readonly string[] };
   roles?: { readonly [roleId: string]: readonly string[] };
-  endpoints?: { readonly [groupId: string]: { readonly [methodPath: string]: string } };
   aliases?: { readonly [fromPrefix: string]: string };
 }
 
@@ -182,7 +180,6 @@ export function resolveRouteRefiners(
 export class RoleRegistry {
   private readonly tree: Record<string, MutableRoleNode> = {};
   private readonly roleList: string[] = [];
-  private readonly groupEndpoints: Record<string, Record<string, string>> = {};
   private readonly allRoutesList: string[] = [];
   private readonly routeMeta = new Map<string, RouteMeta>();
   private readonly prefixAliases: Record<string, string> = {};
@@ -223,7 +220,6 @@ export class RoleRegistry {
   get version(): number { return this.registryVersion; }
   get roleTree(): Readonly<Record<string, RoleNode>> { return this.tree; }
   get roles(): readonly string[] { return this.roleList; }
-  get groupEndpointIds(): Readonly<Record<string, Readonly<Record<string, string>>>> { return this.groupEndpoints; }
   get allHttpRouteIds(): readonly string[] { return this.allRoutesList; }
 
   private bumpVersion(): void {
@@ -363,14 +359,6 @@ export class RoleRegistry {
     return stripped;
   }
 
-  resolveHttpRouteId(routeContributionId: string, method: string, subPath: string): string {
-    const upper = method.toUpperCase();
-    const normSub = subPath === "" ? "/" : subPath;
-    const normGroup = this.normalizeRouteId(routeContributionId);
-    const groupMap = this.groupEndpoints[routeContributionId] ?? this.groupEndpoints[normGroup];
-    return groupMap?.[`${upper} ${normSub}`] ?? groupMap?.[`${upper} ${subPath}`] ?? normGroup;
-  }
-
   private bindRouteToRole(
     roleSpec: string,
     rawRouteSpec: string,
@@ -451,38 +439,6 @@ export class RoleRegistry {
     }
   }
 
-  registerGroupEndpoints(
-    groupId: string,
-    endpoints: Readonly<Record<string, string>>,
-    sourceModule?: string,
-    isRouteOwner = false,
-  ): void {
-    const rawGroup = groupId.trim();
-    if (!rawGroup) return;
-    assertNoWildcard(rawGroup, `registerGroupEndpoints("${rawGroup}")`);
-    const normGroup = this.normalizeRouteId(rawGroup);
-    if (sourceModule) {
-      const groupMeta = this.ensureRouteMeta(normGroup, false);
-      if (isRouteOwner || groupMeta.owner === undefined) groupMeta.owner = sourceModule;
-    }
-    const merged: Record<string, string> = { ...(this.groupEndpoints[normGroup] ?? this.groupEndpoints[rawGroup] ?? {}) };
-    for (const [rawKey, rawEp] of Object.entries(endpoints)) {
-      assertNoWildcard(rawEp, `registerGroupEndpoints("${rawGroup}") endpoint`);
-      const trimmed = rawKey.trim();
-      const idx = trimmed.indexOf(" ");
-      const key = idx > 0 ? `${trimmed.slice(0, idx).toUpperCase()} ${trimmed.slice(idx + 1).trim() || "/"}` : trimmed;
-      const normEp = this.normalizeRouteId(rawEp);
-      if (key && normEp) {
-        merged[key] = normEp;
-        const epMeta = this.ensureRouteMeta(normEp, true);
-        if (sourceModule && (isRouteOwner || epMeta.owner === undefined)) epMeta.owner = sourceModule;
-      }
-    }
-    this.groupEndpoints[normGroup] = merged;
-    if (rawGroup !== normGroup) this.groupEndpoints[rawGroup] = merged;
-    this.bumpVersion();
-  }
-
   registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void {
     const rawId = registration.id.trim();
     if (!rawId) return;
@@ -490,30 +446,8 @@ export class RoleRegistry {
     const src = registration.sourceModule ?? sourceModule;
     const normId = this.normalizeRouteId(rawId);
 
-    const leafIds: string[] = [];
-    if (registration.endpoints && Object.keys(registration.endpoints).length > 0) {
-      this.registerGroupEndpoints(rawId, registration.endpoints, src, true);
-      for (const epId of Object.values(registration.endpoints)) {
-        const normEp = this.normalizeRouteId(epId);
-        if (normEp && !leafIds.includes(normEp)) leafIds.push(normEp);
-      }
-    } else {
-      const existingGroup = this.groupEndpoints[normId] ?? this.groupEndpoints[rawId];
-      if (existingGroup) {
-        if (src) this.ensureRouteMeta(normId, false).owner = src;
-        for (const epId of Object.values(existingGroup)) {
-          if (src) this.ensureRouteMeta(epId, true).owner = src;
-          if (!leafIds.includes(epId)) leafIds.push(epId);
-        }
-      } else {
-        const meta = this.ensureRouteMeta(normId, Boolean(registration.role || registration.roles?.length));
-        if (src) meta.owner = src;
-      }
-    }
-    if (!leafIds.includes(normId)) {
-      leafIds.push(normId);
-      if (src) this.ensureRouteMeta(normId, false).owner = src;
-    }
+    const meta = this.ensureRouteMeta(normId, Boolean(registration.role || registration.roles?.length));
+    if (src) meta.owner = src;
 
     const roles = [
       ...(registration.role?.trim() ? [registration.role.trim()] : []),
@@ -521,7 +455,7 @@ export class RoleRegistry {
     ];
     for (const roleSpec of roles) {
       assertNoWildcard(roleSpec, `registerRoute("${rawId}").roles`);
-      for (const leafId of leafIds) this.bindRouteToRole(roleSpec, leafId, src, true);
+      this.bindRouteToRole(roleSpec, normId, src, true);
     }
     this.bumpVersion();
   }
@@ -531,7 +465,6 @@ export class RoleRegistry {
       RouteRoleRegistration & {
         readonly from?: string;
         readonly data?: {
-          readonly endpoints?: { readonly [methodPath: string]: string };
           readonly role?: string;
           readonly roles?: readonly string[];
         };
@@ -540,13 +473,11 @@ export class RoleRegistry {
     defaultSourceModule?: string,
   ): void {
     for (const item of routes) {
-      const endpoints = item.endpoints ?? item.data?.endpoints;
       const role = item.role ?? item.data?.role;
       const roles = item.roles ?? item.data?.roles;
       const sourceModule = item.sourceModule ?? item.from ?? defaultSourceModule;
       this.registerRoute({
         id: item.id,
-        ...(endpoints ? { endpoints } : {}),
         ...(role ? { role } : {}),
         ...(roles ? { roles } : {}),
         ...(sourceModule ? { sourceModule } : {}),
@@ -556,9 +487,6 @@ export class RoleRegistry {
 
   registerRoleBinding(contribution: RoleHttpBindingContribution, sourceModule?: string): void {
     for (const [from, to] of Object.entries(contribution.aliases ?? {})) this.registerRouteAlias(from, to);
-    for (const [groupId, map] of Object.entries(contribution.endpoints ?? {})) {
-      this.registerGroupEndpoints(groupId, map, sourceModule, false);
-    }
     if (contribution.role && contribution.routes) {
       const roleSpec = contribution.role.trim();
       assertNoWildcard(roleSpec, "registerRoleBinding(role)");
@@ -683,15 +611,10 @@ export const DEFAULT_ROLE_REGISTRY = new RoleRegistry();
 export const ROLE_TREE: Readonly<Record<string, RoleNode>> = DEFAULT_ROLE_REGISTRY.roleTree;
 export const AGENT_AUTH_ROLES: readonly string[] = DEFAULT_ROLE_REGISTRY.roles;
 export const BUILTIN_AGENT_AUTH_ROLES: readonly string[] = [...DEFAULT_ROLE_REGISTRY.roles];
-export const HTTP_GROUP_ENDPOINT_IDS: Readonly<Record<string, Readonly<Record<string, string>>>> =
-  DEFAULT_ROLE_REGISTRY.groupEndpointIds;
 export const ALL_HTTP_ROUTE_IDS: readonly string[] = DEFAULT_ROLE_REGISTRY.allHttpRouteIds;
 
 export function normalizeRouteId(routeId: string): string {
   return DEFAULT_ROLE_REGISTRY.normalizeRouteId(routeId);
-}
-export function resolveHttpRouteId(routeContributionId: string, method: string, subPath: string): string {
-  return DEFAULT_ROLE_REGISTRY.resolveHttpRouteId(routeContributionId, method, subPath);
 }
 export function isAgentAuthRole(value: string, registry: RoleRegistry = DEFAULT_ROLE_REGISTRY): value is AgentAuthRole {
   return registry.isRole(value);

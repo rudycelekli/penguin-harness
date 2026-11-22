@@ -41,12 +41,14 @@ export interface ConnectionFlags {
 
 /** Converts a server `ModelsResponse` into the `ProjectConfig` shape CLI formatters and checks inspect. */
 export function projectConfigFromModelsResponse(res: ModelsResponse): ProjectConfig {
+  const unshapeMaskedKey = (masked: string): string =>
+    masked.length === 9 && masked[4] === "…" ? `000000000${masked.slice(-4)}` : masked;
   const providers: Record<string, ProviderConnection> = {};
   for (const [id, p] of Object.entries(res.providers ?? {})) {
     providers[id] = {
       ...(p.baseUrl !== undefined ? { base_url: p.baseUrl } : {}),
       ...(p.clientType !== undefined ? { client_type: p.clientType } : {}),
-      ...(p.apiKeyMasked !== undefined ? { api_key: p.apiKeyMasked } : {}),
+      ...(p.apiKeyMasked !== undefined ? { api_key: unshapeMaskedKey(p.apiKeyMasked) } : {}),
       ...(p.createdAt !== undefined ? { created_at: p.createdAt } : {}),
     };
   }
@@ -87,7 +89,9 @@ export function projectConfigFromModelsResponse(res: ModelsResponse): ProjectCon
             },
           }
         : {}),
-      ...(m.credential?.apiKeyMasked !== undefined ? { api_key: m.credential.apiKeyMasked } : {}),
+      ...(m.credential?.apiKeyMasked !== undefined
+        ? { api_key: unshapeMaskedKey(m.credential.apiKeyMasked) }
+        : {}),
       ...(m.credential?.baseUrl !== undefined ? { base_url: m.credential.baseUrl } : {}),
       ...(m.credential?.createdAt !== undefined ? { created_at: m.credential.createdAt } : {}),
     })),

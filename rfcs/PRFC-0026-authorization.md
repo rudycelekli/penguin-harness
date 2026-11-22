@@ -66,7 +66,7 @@ Every HTTP route contributed to the `HttpModule.routes` slot carries a dotted `i
 })
 ```
 
-A route component binds single-endpoint contributions to handlers on its `Hono` router using `endpointOf(group, method, subPath)`. For multi-endpoint route groups mounted by prefix, the HTTP gate maps each `(method, subPath)` entry to its fine-grained route `id` via `resolveHttpRouteId(groupId, method, subPath)`.
+A route component binds single-endpoint contributions to handlers on its `Hono` router using `endpointOf(group, method, subPath)`.
 
 Role presets are organized as a declarative directed acyclic role tree (`ROLE_TREE`):
 
@@ -84,12 +84,11 @@ Each role-bound session binds a role identifier and a generation-cached grant. `
 The data shape for the `HttpModule.routes` slot contains the following fields:
 
 - `id: string` — the unique identifier of the route or route group, named by `<domain>.<action>` or `<domain>.<subdomain>.<action>` (for example `session.list`, `workspace.readFile`, `command.run`, `model.updateConfig`, `vault.set`, `org.ticket.start`).
-- `method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"` — an optional single-method constraint. When present, the host mounts the handler only for that HTTP method and path; when omitted, the host mounts the sub-router for the prefix and resolves each endpoint's fine-grained route `id` from `(groupId, method, subPath)`.
+- `method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "ALL"` — an optional single-method constraint. When present, the host mounts the handler only for that HTTP method and path; when omitted, the host mounts the sub-router for the prefix.
 - `prefix: string` — the path pattern mounted on the HTTP application.
 - `auth: "user" | "token" | "none"` — the authentication gate for the route (`"user"` accepts a human session, the local API token, or an authorized Agent session; `"token"` accepts only the local API token; `"none"` is public).
 - `order: number` — the mount order on the HTTP application.
-- `endpoints?: Readonly<Record<string, string>>` — an optional sub-route map (`"METHOD /subpath"` -> fine-grained route `id`) for multi-endpoint Hono route groups, allowing modules and plugins to register fine-grained endpoint IDs directly in their route contribution.
-- `role?: string` and `roles?: readonly string[]` — optional role bindings (supporting `<roleId>@<refinerId>`, such as `"readonly"` or `["myPlugin.maintain", "general@self"]`) that grant this route (and any sub-routes in `endpoints`) directly to the named role nodes. Route IDs and role bindings must be explicit identifiers; wildcard patterns (`*`) are rejected.
+- `role?: string` and `roles?: readonly string[]` — optional role bindings (supporting `<roleId>@<refinerId>`, such as `"readonly"` or `["myPlugin.maintain", "general@self"]`) that grant this route directly to the named role nodes. Route IDs and role bindings must be explicit identifiers; wildcard patterns (`*`) are rejected.
 
 When a component defines several endpoints on one `Hono` group, `endpointOf(group, method, subPath)` builds a single-route `Hono` wrapper that preserves the group's middleware and error handler while dispatching only the declared method and path. This keeps related handlers in one component while giving every endpoint its own route `id` in the manifest.
 
@@ -127,7 +126,7 @@ The role tree and route bindings are assembled exclusively through declarative m
 
 - `role?: string` and `routes?: readonly string[]` — binds a single role node (supporting `<roleId>@<refinerId>`) to an explicit list of HTTP route IDs.
 - `bindings?: Readonly<Record<string, readonly string[]>>` — batch-maps multiple role identifiers to their explicit lists of HTTP route IDs.
-- `endpoints?: Readonly<Record<string, Readonly<Record<string, string>>>>` and `aliases?: Readonly<Record<string, string>>` — registers multi-endpoint group sub-route maps (`groupId -> { "METHOD /subpath": routeId }`) and route ID aliases.
+- `aliases?: Readonly<Record<string, string>>` — registers route ID prefix aliases.
 
 ### Declarative Role Tree (`ROLE_TREE`) and permission scopes
 

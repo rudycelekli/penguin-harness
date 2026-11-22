@@ -59,6 +59,7 @@ import { TICKET_ID_PATTERN } from "../../organization/files.js";
 import { ORG_TICKET_COLUMNS, isCalendarEventName, isChannelId } from "../../organization/paths.js";
 import { parsePrincipal } from "../../organization/principal.js";
 import type { Actor, OrgService } from "../../runtime/organization/service.js";
+import { endpointOf } from "../app.js";
 import { HttpError } from "../errors.js";
 import {
   badRequest,
@@ -1102,112 +1103,364 @@ function parseModel(
     ],
     "HttpModule.routes": [
       {
-        id: "org",
+        id: "org.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/organizations",
         auth: "user",
+        role: "org.read",
         order: 145,
       },
-    ],
-    "AgentAuthPermissionProvider.roleBindings": [
       {
-        id: "org.bindings",
-        endpoints: {
-          org: {
-            "GET /": "org.list",
-            "POST /": "org.create",
-            "GET /:orgId": "org.get",
-            "PATCH /:orgId": "org.update",
-            "DELETE /:orgId": "org.delete",
-            "GET /:orgId/chart": "org.getChart",
-            "POST /:orgId/employees": "org.employee.hire",
-            "PATCH /:orgId/employees/:agentId": "org.employee.update",
-            "GET /:orgId/employees/:agentId/avatar": "org.employee.getAvatar",
-            "PUT /:orgId/employees/:agentId/avatar": "org.employee.updateAvatar",
-            "DELETE /:orgId/employees/:agentId": "org.employee.remove",
-            "GET /:orgId/employees/:agentId/desk": "org.employee.getDesk",
-            "POST /:orgId/employees/:agentId/desk": "org.employee.startDesk",
-            "GET /:orgId/handbook": "org.handbook.get",
-            "PUT /:orgId/handbook": "org.handbook.update",
-            "GET /:orgId/handbook/files": "org.handbook.listFiles",
-            "GET /:orgId/handbook/files/:path{.+}": "org.handbook.readFile",
-            "PUT /:orgId/handbook/files/:path{.+}": "org.handbook.writeFile",
-            "DELETE /:orgId/handbook/files/:path{.+}": "org.handbook.deleteFile",
-            "GET /:orgId/calendar": "org.calendar.list",
-            "POST /:orgId/calendar": "org.calendar.create",
-            "GET /:orgId/calendar/:agentId/:name": "org.calendar.get",
-            "PUT /:orgId/calendar/:agentId/:name": "org.calendar.update",
-            "DELETE /:orgId/calendar/:agentId/:name": "org.calendar.delete",
-            "GET /:orgId/tickets": "org.ticket.list",
-            "POST /:orgId/tickets": "org.ticket.create",
-            "GET /:orgId/tickets/:ticketId": "org.ticket.get",
-            "PUT /:orgId/tickets/:ticketId": "org.ticket.update",
-            "POST /:orgId/tickets/:ticketId/move": "org.ticket.move",
-            "POST /:orgId/tickets/:ticketId/block": "org.ticket.block",
-            "POST /:orgId/tickets/:ticketId/unblock": "org.ticket.unblock",
-            "POST /:orgId/tickets/:ticketId/progress": "org.ticket.progress",
-            "POST /:orgId/tickets/:ticketId/start": "org.ticket.start",
-            "POST /:orgId/tickets/:ticketId/attach": "org.ticket.attach",
-            "GET /:orgId/channels": "org.channel.list",
-            "POST /:orgId/channels": "org.channel.create",
-            "GET /:orgId/channels/:channelId": "org.channel.get",
-            "PATCH /:orgId/channels/:channelId": "org.channel.update",
-            "POST /:orgId/channels/:channelId/members": "org.channel.addMember",
-            "DELETE /:orgId/channels/:channelId/members/:principal": "org.channel.removeMember",
-            "GET /:orgId/channels/:channelId/messages": "org.channel.listMessages",
-            "POST /:orgId/channels/:channelId/messages": "org.channel.postMessage",
-            "POST /:orgId/channels/:channelId/read": "org.channel.markRead",
-            "GET /:orgId/finance": "org.finance.get",
-            "GET /:orgId/sessions": "org.session.list",
-          },
-        },
-        bindings: {
-          "org.employee.read": ["org.employee.getAvatar", "org.employee.getDesk"],
-          "org.employee.maintain": [
-            "org.employee.hire",
-            "org.employee.update",
-            "org.employee.updateAvatar",
-            "org.employee.startDesk",
-          ],
-          "org.employee.all": ["org.employee.remove"],
-          "org.handbook.read": [
-            "org.handbook.get",
-            "org.handbook.listFiles",
-            "org.handbook.readFile",
-          ],
-          "org.handbook.maintain": ["org.handbook.update", "org.handbook.writeFile"],
-          "org.handbook.all": ["org.handbook.deleteFile"],
-          "org.calendar.read": ["org.calendar.list", "org.calendar.get"],
-          "org.calendar.maintain": ["org.calendar.create", "org.calendar.update"],
-          "org.calendar.all": ["org.calendar.delete"],
-          "org.ticket.read": ["org.ticket.list", "org.ticket.get"],
-          "org.ticket.maintain": [
-            "org.ticket.create",
-            "org.ticket.update",
-            "org.ticket.move",
-            "org.ticket.block",
-            "org.ticket.unblock",
-            "org.ticket.progress",
-            "org.ticket.start",
-            "org.ticket.attach",
-          ],
-          "org.channel.read": [
-            "org.channel.list",
-            "org.channel.get",
-            "org.channel.listMessages",
-          ],
-          "org.channel.maintain": [
-            "org.channel.create",
-            "org.channel.update",
-            "org.channel.addMember",
-            "org.channel.postMessage",
-            "org.channel.markRead",
-          ],
-          "org.channel.all": ["org.channel.removeMember"],
-          "org.finance.read": ["org.finance.get"],
-          "org.read": ["org.list", "org.get", "org.getChart", "org.session.list"],
-          "org.maintain": ["org.update"],
-          "org.all": ["org.create", "org.delete"],
-        },
+        id: "org.create",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations",
+        auth: "user",
+        role: "org.all",
+        order: 145,
+      },
+      {
+        id: "org.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId",
+        auth: "user",
+        role: "org.read",
+        order: 145,
+      },
+      {
+        id: "org.update",
+        method: "PATCH",
+        prefix: "/api/projects/:projectId/organizations/:orgId",
+        auth: "user",
+        role: "org.maintain",
+        order: 145,
+      },
+      {
+        id: "org.delete",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/organizations/:orgId",
+        auth: "user",
+        role: "org.all",
+        order: 145,
+      },
+      {
+        id: "org.getChart",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/chart",
+        auth: "user",
+        role: "org.read",
+        order: 145,
+      },
+      {
+        id: "org.employee.hire",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/employees",
+        auth: "user",
+        role: "org.employee.maintain",
+        order: 145,
+      },
+      {
+        id: "org.employee.update",
+        method: "PATCH",
+        prefix: "/api/projects/:projectId/organizations/:orgId/employees/:agentId",
+        auth: "user",
+        role: "org.employee.maintain",
+        order: 145,
+      },
+      {
+        id: "org.employee.getAvatar",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar",
+        auth: "user",
+        role: "org.employee.read",
+        order: 145,
+      },
+      {
+        id: "org.employee.updateAvatar",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar",
+        auth: "user",
+        role: "org.employee.maintain",
+        order: 145,
+      },
+      {
+        id: "org.employee.remove",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/organizations/:orgId/employees/:agentId",
+        auth: "user",
+        role: "org.employee.all",
+        order: 145,
+      },
+      {
+        id: "org.employee.getDesk",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk",
+        auth: "user",
+        role: "org.employee.read",
+        order: 145,
+      },
+      {
+        id: "org.employee.startDesk",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk",
+        auth: "user",
+        role: "org.employee.maintain",
+        order: 145,
+      },
+      {
+        id: "org.handbook.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/handbook",
+        auth: "user",
+        role: "org.handbook.read",
+        order: 145,
+      },
+      {
+        id: "org.handbook.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/organizations/:orgId/handbook",
+        auth: "user",
+        role: "org.handbook.maintain",
+        order: 145,
+      },
+      {
+        id: "org.handbook.listFiles",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/handbook/files",
+        auth: "user",
+        role: "org.handbook.read",
+        order: 145,
+      },
+      {
+        id: "org.handbook.readFile",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}",
+        auth: "user",
+        role: "org.handbook.read",
+        order: 145,
+      },
+      {
+        id: "org.handbook.writeFile",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}",
+        auth: "user",
+        role: "org.handbook.maintain",
+        order: 145,
+      },
+      {
+        id: "org.handbook.deleteFile",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}",
+        auth: "user",
+        role: "org.handbook.all",
+        order: 145,
+      },
+      {
+        id: "org.calendar.list",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/calendar",
+        auth: "user",
+        role: "org.calendar.read",
+        order: 145,
+      },
+      {
+        id: "org.calendar.create",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/calendar",
+        auth: "user",
+        role: "org.calendar.maintain",
+        order: 145,
+      },
+      {
+        id: "org.calendar.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name",
+        auth: "user",
+        role: "org.calendar.read",
+        order: 145,
+      },
+      {
+        id: "org.calendar.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name",
+        auth: "user",
+        role: "org.calendar.maintain",
+        order: 145,
+      },
+      {
+        id: "org.calendar.delete",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name",
+        auth: "user",
+        role: "org.calendar.all",
+        order: 145,
+      },
+      {
+        id: "org.ticket.list",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets",
+        auth: "user",
+        role: "org.ticket.read",
+        order: 145,
+      },
+      {
+        id: "org.ticket.create",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.ticket.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId",
+        auth: "user",
+        role: "org.ticket.read",
+        order: 145,
+      },
+      {
+        id: "org.ticket.update",
+        method: "PUT",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.ticket.move",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/move",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.ticket.block",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/block",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.ticket.unblock",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/unblock",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.ticket.progress",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/progress",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.ticket.start",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/start",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.ticket.attach",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/attach",
+        auth: "user",
+        role: "org.ticket.maintain",
+        order: 145,
+      },
+      {
+        id: "org.channel.list",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels",
+        auth: "user",
+        role: "org.channel.read",
+        order: 145,
+      },
+      {
+        id: "org.channel.create",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels",
+        auth: "user",
+        role: "org.channel.maintain",
+        order: 145,
+      },
+      {
+        id: "org.channel.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId",
+        auth: "user",
+        role: "org.channel.read",
+        order: 145,
+      },
+      {
+        id: "org.channel.update",
+        method: "PATCH",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId",
+        auth: "user",
+        role: "org.channel.maintain",
+        order: 145,
+      },
+      {
+        id: "org.channel.addMember",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members",
+        auth: "user",
+        role: "org.channel.maintain",
+        order: 145,
+      },
+      {
+        id: "org.channel.removeMember",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members/:principal",
+        auth: "user",
+        role: "org.channel.all",
+        order: 145,
+      },
+      {
+        id: "org.channel.listMessages",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages",
+        auth: "user",
+        role: "org.channel.read",
+        order: 145,
+      },
+      {
+        id: "org.channel.postMessage",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages",
+        auth: "user",
+        role: "org.channel.maintain",
+        order: 145,
+      },
+      {
+        id: "org.channel.markRead",
+        method: "POST",
+        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId/read",
+        auth: "user",
+        role: "org.channel.maintain",
+        order: 145,
+      },
+      {
+        id: "org.finance.get",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/finance",
+        auth: "user",
+        role: "org.finance.read",
+        order: 145,
+      },
+      {
+        id: "org.session.list",
+        method: "GET",
+        prefix: "/api/projects/:projectId/organizations/:orgId/sessions",
+        auth: "user",
+        role: "org.read",
+        order: 145,
       },
     ],
   },
@@ -1228,9 +1481,53 @@ export class OrgRoutes {
   @Use() private readonly errorsRepo!: ErrorLog;
   @Use() private readonly agentApi!: AgentApi;
   @Use() private readonly agentAuth!: AgentAuth;
-  @Bind("org") routes!: Hono<AppEnv>;
+  @Bind("org.list") listOrgsRoute!: Hono<AppEnv>;
+  @Bind("org.create") createOrgRoute!: Hono<AppEnv>;
+  @Bind("org.get") getOrgRoute!: Hono<AppEnv>;
+  @Bind("org.update") updateOrgRoute!: Hono<AppEnv>;
+  @Bind("org.delete") deleteOrgRoute!: Hono<AppEnv>;
+  @Bind("org.getChart") getChartRoute!: Hono<AppEnv>;
+  @Bind("org.employee.hire") hireEmployeeRoute!: Hono<AppEnv>;
+  @Bind("org.employee.update") updateEmployeeRoute!: Hono<AppEnv>;
+  @Bind("org.employee.getAvatar") getEmployeeAvatarRoute!: Hono<AppEnv>;
+  @Bind("org.employee.updateAvatar") updateEmployeeAvatarRoute!: Hono<AppEnv>;
+  @Bind("org.employee.remove") removeEmployeeRoute!: Hono<AppEnv>;
+  @Bind("org.employee.getDesk") getEmployeeDeskRoute!: Hono<AppEnv>;
+  @Bind("org.employee.startDesk") startEmployeeDeskRoute!: Hono<AppEnv>;
+  @Bind("org.handbook.get") getHandbookRoute!: Hono<AppEnv>;
+  @Bind("org.handbook.update") updateHandbookRoute!: Hono<AppEnv>;
+  @Bind("org.handbook.listFiles") listHandbookFilesRoute!: Hono<AppEnv>;
+  @Bind("org.handbook.readFile") readHandbookFileRoute!: Hono<AppEnv>;
+  @Bind("org.handbook.writeFile") writeHandbookFileRoute!: Hono<AppEnv>;
+  @Bind("org.handbook.deleteFile") deleteHandbookFileRoute!: Hono<AppEnv>;
+  @Bind("org.calendar.list") listCalendarRoute!: Hono<AppEnv>;
+  @Bind("org.calendar.create") createCalendarRoute!: Hono<AppEnv>;
+  @Bind("org.calendar.get") getCalendarRoute!: Hono<AppEnv>;
+  @Bind("org.calendar.update") updateCalendarRoute!: Hono<AppEnv>;
+  @Bind("org.calendar.delete") deleteCalendarRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.list") listTicketsRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.create") createTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.get") getTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.update") updateTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.move") moveTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.block") blockTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.unblock") unblockTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.progress") progressTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.start") startTicketRoute!: Hono<AppEnv>;
+  @Bind("org.ticket.attach") attachTicketRoute!: Hono<AppEnv>;
+  @Bind("org.channel.list") listChannelsRoute!: Hono<AppEnv>;
+  @Bind("org.channel.create") createChannelRoute!: Hono<AppEnv>;
+  @Bind("org.channel.get") getChannelRoute!: Hono<AppEnv>;
+  @Bind("org.channel.update") updateChannelRoute!: Hono<AppEnv>;
+  @Bind("org.channel.addMember") addChannelMemberRoute!: Hono<AppEnv>;
+  @Bind("org.channel.removeMember") removeChannelMemberRoute!: Hono<AppEnv>;
+  @Bind("org.channel.listMessages") listChannelMessagesRoute!: Hono<AppEnv>;
+  @Bind("org.channel.postMessage") postChannelMessageRoute!: Hono<AppEnv>;
+  @Bind("org.channel.markRead") markChannelReadRoute!: Hono<AppEnv>;
+  @Bind("org.finance.get") getFinanceRoute!: Hono<AppEnv>;
+  @Bind("org.session.list") listOrgSessionsRoute!: Hono<AppEnv>;
   setup() {
-    this.routes = organizationRoutes({
+    const group = organizationRoutes({
       orgService: this.orgService,
       projectService: this.projectService,
       serverSettingsRepo: this.settings,
@@ -1248,5 +1545,62 @@ export class OrgRoutes {
         agentAuth: this.agentAuth,
       },
     });
+    this.listOrgsRoute = endpointOf(group, "GET", "/");
+    this.createOrgRoute = endpointOf(group, "POST", "/");
+    this.getOrgRoute = endpointOf(group, "GET", "/:orgId");
+    this.updateOrgRoute = endpointOf(group, "PATCH", "/:orgId");
+    this.deleteOrgRoute = endpointOf(group, "DELETE", "/:orgId");
+    this.getChartRoute = endpointOf(group, "GET", "/:orgId/chart");
+    this.hireEmployeeRoute = endpointOf(group, "POST", "/:orgId/employees");
+    this.updateEmployeeRoute = endpointOf(group, "PATCH", "/:orgId/employees/:agentId");
+    this.getEmployeeAvatarRoute = endpointOf(group, "GET", "/:orgId/employees/:agentId/avatar");
+    this.updateEmployeeAvatarRoute = endpointOf(group, "PUT", "/:orgId/employees/:agentId/avatar");
+    this.removeEmployeeRoute = endpointOf(group, "DELETE", "/:orgId/employees/:agentId");
+    this.getEmployeeDeskRoute = endpointOf(group, "GET", "/:orgId/employees/:agentId/desk");
+    this.startEmployeeDeskRoute = endpointOf(group, "POST", "/:orgId/employees/:agentId/desk");
+    this.getHandbookRoute = endpointOf(group, "GET", "/:orgId/handbook");
+    this.updateHandbookRoute = endpointOf(group, "PUT", "/:orgId/handbook");
+    this.listHandbookFilesRoute = endpointOf(group, "GET", "/:orgId/handbook/files");
+    this.readHandbookFileRoute = endpointOf(group, "GET", "/:orgId/handbook/files/:path{.+}");
+    this.writeHandbookFileRoute = endpointOf(group, "PUT", "/:orgId/handbook/files/:path{.+}");
+    this.deleteHandbookFileRoute = endpointOf(group, "DELETE", "/:orgId/handbook/files/:path{.+}");
+    this.listCalendarRoute = endpointOf(group, "GET", "/:orgId/calendar");
+    this.createCalendarRoute = endpointOf(group, "POST", "/:orgId/calendar");
+    this.getCalendarRoute = endpointOf(group, "GET", "/:orgId/calendar/:agentId/:name");
+    this.updateCalendarRoute = endpointOf(group, "PUT", "/:orgId/calendar/:agentId/:name");
+    this.deleteCalendarRoute = endpointOf(group, "DELETE", "/:orgId/calendar/:agentId/:name");
+    this.listTicketsRoute = endpointOf(group, "GET", "/:orgId/tickets");
+    this.createTicketRoute = endpointOf(group, "POST", "/:orgId/tickets");
+    this.getTicketRoute = endpointOf(group, "GET", "/:orgId/tickets/:ticketId");
+    this.updateTicketRoute = endpointOf(group, "PUT", "/:orgId/tickets/:ticketId");
+    this.moveTicketRoute = endpointOf(group, "POST", "/:orgId/tickets/:ticketId/move");
+    this.blockTicketRoute = endpointOf(group, "POST", "/:orgId/tickets/:ticketId/block");
+    this.unblockTicketRoute = endpointOf(group, "POST", "/:orgId/tickets/:ticketId/unblock");
+    this.progressTicketRoute = endpointOf(group, "POST", "/:orgId/tickets/:ticketId/progress");
+    this.startTicketRoute = endpointOf(group, "POST", "/:orgId/tickets/:ticketId/start");
+    this.attachTicketRoute = endpointOf(group, "POST", "/:orgId/tickets/:ticketId/attach");
+    this.listChannelsRoute = endpointOf(group, "GET", "/:orgId/channels");
+    this.createChannelRoute = endpointOf(group, "POST", "/:orgId/channels");
+    this.getChannelRoute = endpointOf(group, "GET", "/:orgId/channels/:channelId");
+    this.updateChannelRoute = endpointOf(group, "PATCH", "/:orgId/channels/:channelId");
+    this.addChannelMemberRoute = endpointOf(group, "POST", "/:orgId/channels/:channelId/members");
+    this.removeChannelMemberRoute = endpointOf(
+      group,
+      "DELETE",
+      "/:orgId/channels/:channelId/members/:principal",
+    );
+    this.listChannelMessagesRoute = endpointOf(
+      group,
+      "GET",
+      "/:orgId/channels/:channelId/messages",
+    );
+    this.postChannelMessageRoute = endpointOf(
+      group,
+      "POST",
+      "/:orgId/channels/:channelId/messages",
+    );
+    this.markChannelReadRoute = endpointOf(group, "POST", "/:orgId/channels/:channelId/read");
+    this.getFinanceRoute = endpointOf(group, "GET", "/:orgId/finance");
+    this.listOrgSessionsRoute = endpointOf(group, "GET", "/:orgId/sessions");
   }
 }

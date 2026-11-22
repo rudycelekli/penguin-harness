@@ -82,6 +82,7 @@ import type { Workbenches } from "../../mechanisms/workbenches.js";
 import type { Sessions as ManagerIface } from "../../runtime/session-manager.js";
 import { Bind, Component, Use } from "@prismshadow/penguin-core/kernel";
 import type { ClassCtx, Json } from "@prismshadow/penguin-core/kernel";
+import { endpointOf } from "../app.js";
 import { agentHooksRoutes } from "./hooks.js";
 import {
   BUILTIN_REGISTRY_SOURCE,
@@ -383,70 +384,125 @@ export function agentMcpServersRoutes(deps: PluginsRouteDeps): Hono<AppEnv> {
       },
     ],
     "HttpModule.routes": [
-      { id: "plugins.library", prefix: "/api/plugins", auth: "user", order: 70 },
       {
-        id: "plugins.agent-plugins",
+        id: "plugin.library.list",
+        method: "GET",
+        prefix: "/api/plugins",
+        auth: "user",
+        role: "plugin.read",
+        order: 70,
+      },
+      {
+        id: "plugin.library.listFiles",
+        method: "GET",
+        prefix: "/api/plugins/:plugin/files",
+        auth: "user",
+        role: "plugin.read",
+        order: 70,
+      },
+      {
+        id: "plugin.library.getReadme",
+        method: "GET",
+        prefix: "/api/plugins/:plugin/readme",
+        auth: "user",
+        role: "plugin.read",
+        order: 70,
+      },
+      {
+        id: "plugin.library.getArchive",
+        method: "GET",
+        prefix: "/api/plugins/:plugin/archive",
+        auth: "user",
+        role: "plugin.read",
+        order: 70,
+      },
+      {
+        id: "plugin.library.getIcon",
+        method: "GET",
+        prefix: "/api/plugins/:plugin/icon",
+        auth: "user",
+        role: "plugin.read",
+        order: 70,
+      },
+      {
+        id: "plugin.agent.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/plugins",
         auth: "user",
+        role: "plugin.read",
         order: 222,
       },
       {
-        id: "plugins.agent-hooks",
+        id: "plugin.agent.install",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/plugins",
+        auth: "user",
+        role: "plugin.maintain",
+        order: 222,
+      },
+      {
+        id: "plugin.agent.uninstall",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/agents/:agentId/plugins/:name",
+        auth: "user",
+        role: "plugin.all",
+        order: 222,
+      },
+      {
+        id: "plugin.hook.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/hooks",
         auth: "user",
+        role: "plugin.read",
         order: 224,
       },
       {
-        id: "plugins.agent-mcp-servers",
+        id: "plugin.hook.importArchive",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/hooks/archive",
+        auth: "user",
+        role: "plugin.maintain",
+        order: 224,
+      },
+      {
+        id: "plugin.hook.exportArchive",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/hooks/:name/archive",
+        auth: "user",
+        role: "plugin.read",
+        order: 224,
+      },
+      {
+        id: "plugin.hook.getIcon",
+        method: "GET",
+        prefix: "/api/projects/:projectId/agents/:agentId/hooks/:name/icon",
+        auth: "user",
+        role: "plugin.read",
+        order: 224,
+      },
+      {
+        id: "plugin.hook.delete",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/agents/:agentId/hooks/:name",
+        auth: "user",
+        role: "plugin.all",
+        order: 224,
+      },
+      {
+        id: "plugin.mcp.list",
+        method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/mcp-servers",
         auth: "user",
+        role: "plugin.read",
         order: 226,
       },
-    ],
-    "AgentAuthPermissionProvider.roleBindings": [
       {
-        id: "plugins.bindings",
-        endpoints: {
-          "plugins.library": {
-            "GET /": "plugin.library.list",
-            "GET /:plugin/files": "plugin.library.listFiles",
-            "GET /:plugin/readme": "plugin.library.getReadme",
-            "GET /:plugin/archive": "plugin.library.getArchive",
-            "GET /:plugin/icon": "plugin.library.getIcon",
-          },
-          "plugins.agent-plugins": {
-            "GET /": "plugin.agent.list",
-            "POST /": "plugin.agent.install",
-            "DELETE /:name": "plugin.agent.uninstall",
-          },
-          "plugins.agent-hooks": {
-            "GET /": "plugin.hook.list",
-            "POST /archive": "plugin.hook.importArchive",
-            "GET /:name/archive": "plugin.hook.exportArchive",
-            "GET /:name/icon": "plugin.hook.getIcon",
-            "DELETE /:name": "plugin.hook.delete",
-          },
-          "plugins.agent-mcp-servers": {
-            "GET /": "plugin.mcp.list",
-            "DELETE /:name": "plugin.mcp.delete",
-          },
-        },
-        bindings: {
-          "plugin.read": [
-            "plugin.library.list",
-            "plugin.library.listFiles",
-            "plugin.library.getReadme",
-            "plugin.library.getArchive",
-            "plugin.library.getIcon",
-            "plugin.agent.list",
-            "plugin.hook.list",
-            "plugin.hook.exportArchive",
-            "plugin.hook.getIcon",
-            "plugin.mcp.list",
-          ],
-          "plugin.maintain": ["plugin.agent.install", "plugin.hook.importArchive"],
-          "plugin.all": ["plugin.agent.uninstall", "plugin.hook.delete", "plugin.mcp.delete"],
-        },
+        id: "plugin.mcp.delete",
+        method: "DELETE",
+        prefix: "/api/projects/:projectId/agents/:agentId/mcp-servers/:name",
+        auth: "user",
+        role: "plugin.all",
+        order: 226,
       },
     ],
   },
@@ -459,10 +515,21 @@ export class PluginRoutes {
   @Use() private readonly library!: PluginLibrary;
   @Use() private readonly workbenches!: Workbenches;
   @Use() private readonly pluginModules!: PluginModules;
-  @Bind("plugins.library") libraryRoutes!: Hono<AppEnv>;
-  @Bind("plugins.agent-plugins") pluginRoutes!: Hono<AppEnv>;
-  @Bind("plugins.agent-hooks") hookRoutes!: Hono<AppEnv>;
-  @Bind("plugins.agent-mcp-servers") mcpServerRoutes!: Hono<AppEnv>;
+  @Bind("plugin.library.list") libraryListRoute!: Hono<AppEnv>;
+  @Bind("plugin.library.listFiles") libraryListFilesRoute!: Hono<AppEnv>;
+  @Bind("plugin.library.getReadme") libraryGetReadmeRoute!: Hono<AppEnv>;
+  @Bind("plugin.library.getArchive") libraryGetArchiveRoute!: Hono<AppEnv>;
+  @Bind("plugin.library.getIcon") libraryGetIconRoute!: Hono<AppEnv>;
+  @Bind("plugin.agent.list") agentListRoute!: Hono<AppEnv>;
+  @Bind("plugin.agent.install") agentInstallRoute!: Hono<AppEnv>;
+  @Bind("plugin.agent.uninstall") agentUninstallRoute!: Hono<AppEnv>;
+  @Bind("plugin.hook.list") hookListRoute!: Hono<AppEnv>;
+  @Bind("plugin.hook.importArchive") hookImportArchiveRoute!: Hono<AppEnv>;
+  @Bind("plugin.hook.exportArchive") hookExportArchiveRoute!: Hono<AppEnv>;
+  @Bind("plugin.hook.getIcon") hookGetIconRoute!: Hono<AppEnv>;
+  @Bind("plugin.hook.delete") hookDeleteRoute!: Hono<AppEnv>;
+  @Bind("plugin.mcp.list") mcpListRoute!: Hono<AppEnv>;
+  @Bind("plugin.mcp.delete") mcpDeleteRoute!: Hono<AppEnv>;
   setup() {
     const deps = {
       config: this.config,
@@ -473,10 +540,25 @@ export class PluginRoutes {
       workbenches: this.workbenches,
       modules: this.pluginModules,
     };
-    this.libraryRoutes = pluginLibraryRoutes(this.library);
-    this.pluginRoutes = agentPluginsRoutes(deps);
-    this.hookRoutes = agentHooksRoutes(deps);
-    this.mcpServerRoutes = agentMcpServersRoutes(deps);
+    const libGroup = pluginLibraryRoutes(this.library);
+    this.libraryListRoute = endpointOf(libGroup, "GET", "/");
+    this.libraryListFilesRoute = endpointOf(libGroup, "GET", "/:plugin/files");
+    this.libraryGetReadmeRoute = endpointOf(libGroup, "GET", "/:plugin/readme");
+    this.libraryGetArchiveRoute = endpointOf(libGroup, "GET", "/:plugin/archive");
+    this.libraryGetIconRoute = endpointOf(libGroup, "GET", "/:plugin/icon");
+    const agentGroup = agentPluginsRoutes(deps);
+    this.agentListRoute = endpointOf(agentGroup, "GET", "/");
+    this.agentInstallRoute = endpointOf(agentGroup, "POST", "/");
+    this.agentUninstallRoute = endpointOf(agentGroup, "DELETE", "/:name");
+    const hookGroup = agentHooksRoutes(deps);
+    this.hookListRoute = endpointOf(hookGroup, "GET", "/");
+    this.hookImportArchiveRoute = endpointOf(hookGroup, "POST", "/archive");
+    this.hookExportArchiveRoute = endpointOf(hookGroup, "GET", "/:name/archive");
+    this.hookGetIconRoute = endpointOf(hookGroup, "GET", "/:name/icon");
+    this.hookDeleteRoute = endpointOf(hookGroup, "DELETE", "/:name");
+    const mcpGroup = agentMcpServersRoutes(deps);
+    this.mcpListRoute = endpointOf(mcpGroup, "GET", "/");
+    this.mcpDeleteRoute = endpointOf(mcpGroup, "DELETE", "/:name");
   }
 }
 
@@ -732,17 +814,36 @@ function resolveRegistries(options: PluginRoutesOptions): PluginRegistry[] {
   contributes: {
     "HttpModule.routes": [
       {
-        id: "plugin-registry",
+        id: "plugin.registry.list",
+        method: "GET",
         prefix: "/api/plugins/registry",
         auth: "user",
-        order: 69,
-        endpoints: {
-          "GET /": "plugin.registry.list",
-          "GET /icon": "plugin.registry.getIcon",
-          "GET /readme": "plugin.registry.getReadme",
-          "GET /archive": "plugin.registry.getArchive",
-        },
         role: "plugin.read",
+        order: 69,
+      },
+      {
+        id: "plugin.registry.getIcon",
+        method: "GET",
+        prefix: "/api/plugins/registry/icon",
+        auth: "user",
+        role: "plugin.read",
+        order: 69,
+      },
+      {
+        id: "plugin.registry.getReadme",
+        method: "GET",
+        prefix: "/api/plugins/registry/readme",
+        auth: "user",
+        role: "plugin.read",
+        order: 69,
+      },
+      {
+        id: "plugin.registry.getArchive",
+        method: "GET",
+        prefix: "/api/plugins/registry/archive",
+        auth: "user",
+        role: "plugin.read",
+        order: 69,
       },
     ],
   },
@@ -755,7 +856,10 @@ export class PluginRegistryRoutes {
   @Use() private readonly config!: Config;
   @Use() private readonly hmr!: Hmr;
   @Use() private readonly sources!: IndexSources;
-  @Bind("plugin-registry") routes!: Hono<AppEnv>;
+  @Bind("plugin.registry.list") listRoute!: Hono<AppEnv>;
+  @Bind("plugin.registry.getIcon") getIconRoute!: Hono<AppEnv>;
+  @Bind("plugin.registry.getReadme") getReadmeRoute!: Hono<AppEnv>;
+  @Bind("plugin.registry.getArchive") getArchiveRoute!: Hono<AppEnv>;
   private cache: CachedRegistry | null = null;
   private cacheUrl: string | null = null;
   /** v1 parked without the snapshot's source URL; v2 names it. A v1 snapshot seeds nothing —
@@ -763,7 +867,7 @@ export class PluginRegistryRoutes {
   migrations = { 1: () => null };
   setup(_ctx: ClassCtx, context: Json) {
     const parked = (context as { index?: IndexSnapshot } | null)?.index;
-    this.routes = pluginRegistryRoutes({
+    const group = pluginRegistryRoutes({
       indexUrl: () => this.sources.urls(),
       // Read per request: a push moves the shipped prefix to a new assets directory.
       bases: () => pluginBases(this.config.root, this.hmr.assetsDir()),
@@ -775,6 +879,10 @@ export class PluginRegistryRoutes {
         this.cacheUrl = url;
       },
     });
+    this.listRoute = endpointOf(group, "GET", "/");
+    this.getIconRoute = endpointOf(group, "GET", "/icon");
+    this.getReadmeRoute = endpointOf(group, "GET", "/readme");
+    this.getArchiveRoute = endpointOf(group, "GET", "/archive");
   }
 
   park(): Json {

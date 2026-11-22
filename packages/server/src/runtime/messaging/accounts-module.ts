@@ -10,6 +10,7 @@ import {
   messagingAccountHoldersRoutes,
   messagingAccountsRoutes,
 } from "../../http/routes/messaging-accounts.js";
+import { endpointOf } from "../../http/app.js";
 import type { Machines } from "../../machines/service.js";
 import type { MessagingBindings } from "@prismshadow/penguin-library-messaging";
 import type { Access } from "@prismshadow/penguin-library-project";
@@ -19,33 +20,20 @@ import type { SessionIndex } from "@prismshadow/penguin-library-session";
   contributes: {
     "HttpModule.routes": [
       {
-        id: "messaging.accounts",
-        prefix: "/api/messaging",
+        id: "messaging.listAccounts",
+        method: "GET",
+        prefix: "/api/messaging/accounts",
         auth: "user",
+        role: "messaging.read",
         order: 281,
-        role: "messaging.read",
       },
       {
-        id: "messaging.account-holders",
-        prefix: "/api/projects/:projectId/messaging",
+        id: "messaging.listAccountHolders",
+        method: "GET",
+        prefix: "/api/projects/:projectId/messaging/account-holders",
         auth: "user",
+        role: "messaging.read",
         order: 282,
-        role: "messaging.read",
-      },
-    ],
-    "HttpModule.roleBindings": [
-      {
-        id: "messaging.accounts.bindings",
-        endpoints: {
-          "messaging.accounts": {
-            "GET /accounts": "messaging.listAccounts",
-          },
-          "messaging.account-holders": {
-            "GET /account-holders": "messaging.listAccountHolders",
-          },
-        },
-        role: "messaging.read",
-        routes: ["messaging.listAccounts", "messaging.listAccountHolders"],
       },
     ],
   },
@@ -55,8 +43,8 @@ export class MessagingAccountsModule {
   @Use() private readonly sessionsRepo!: SessionIndex;
   @Use() private readonly machines!: Machines;
   @Use() private readonly access!: Access;
-  @Bind("messaging.accounts") accountsRoutes!: Hono<AppEnv>;
-  @Bind("messaging.account-holders") accountHoldersRoutes!: Hono<AppEnv>;
+  @Bind("messaging.listAccounts") accountsRoutes!: Hono<AppEnv>;
+  @Bind("messaging.listAccountHolders") accountHoldersRoutes!: Hono<AppEnv>;
   setup() {
     const deps = {
       messagingRepo: this.messagingRepo,
@@ -64,7 +52,11 @@ export class MessagingAccountsModule {
       machines: this.machines,
       access: this.access,
     };
-    this.accountsRoutes = messagingAccountsRoutes(deps);
-    this.accountHoldersRoutes = messagingAccountHoldersRoutes(deps);
+    this.accountsRoutes = endpointOf(messagingAccountsRoutes(deps), "GET", "/accounts");
+    this.accountHoldersRoutes = endpointOf(
+      messagingAccountHoldersRoutes(deps),
+      "GET",
+      "/account-holders",
+    );
   }
 }

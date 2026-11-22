@@ -47,7 +47,7 @@ import {
   type AuthRefinerInput,
 } from "../auth/auth-refiners.js";
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "ALL";
 
 /**
  * The assembled business surface: one request in, one response (or a decline) out.
@@ -98,11 +98,9 @@ export interface HttpSlots {
    * browser extension): such groups are mounted ahead of the others and of the same-origin rule
    * for writes, which so never runs for a request one of them answers (http/own-origin.ts). The
    * code half is the Hono app — any copy of Hono: one built with a plugin's own copy is made to
-   * hand its errors to the App's handler (http/foreign-groups.ts). `endpoints` (optional) maps
-   * `"METHOD /subpath"` to fine-grained route IDs for multi-endpoint Hono route groups so
-   * external modules and plugins need not edit a central route table; `roles` (optional) binds
-   * this route (and any `endpoints` sub-routes) directly into the named role nodes (supporting
-   * `<roleId>@<refinerId>` such as `["myPlugin.maintain", "general@self"]`).
+   * hand its errors to the App's handler (http/foreign-groups.ts). `role` / `roles` (optional)
+   * bind this route directly into the named role nodes (supporting `<roleId>@<refinerId>` such
+   * as `["myPlugin.maintain", "general@self"]`).
    */
   routes: Slot<
     {
@@ -111,7 +109,6 @@ export interface HttpSlots {
       auth: "user" | "token" | "none";
       order: number;
       origin?: "own";
-      endpoints?: { readonly [methodPath: string]: string };
       role?: string;
       roles?: readonly string[];
     },
@@ -352,7 +349,7 @@ function withRouteAuth(
     if (
       route.method === "ALL" &&
       route.path === "/*" &&
-      normalizedGroup !== "machines.server-proxy"
+      normalizedGroup !== "machine.proxy"
     ) {
       if (!hasConcreteRoute) {
         groupMiddlewares.push(route.handler);
@@ -362,14 +359,13 @@ function withRouteAuth(
       continue;
     }
     hasConcreteRoute = true;
-    const resolvedId = roleRegistry.resolveHttpRouteId(normalizedGroup, route.method, route.path);
     gated.on(
       route.method,
       route.path,
       async (c, next) => {
         await checkRouteAuth(
           c,
-          resolvedId,
+          normalizedGroup,
           normalizedGroup,
           refinerRegistry,
           roleRegistry,
@@ -432,13 +428,11 @@ export class HttpModule {
 
     const rawRoutes = contributions.routes ?? [];
     for (const c of rawRoutes) {
-      const endpoints = c.data.endpoints as { readonly [methodPath: string]: string } | undefined;
       const role = c.data.role as string | undefined;
       const roles = c.data.roles as readonly string[] | undefined;
       const sourceModule = (c as { readonly from?: string }).from;
       const reg = {
         id: c.id,
-        ...(endpoints !== undefined ? { endpoints } : {}),
         ...(role !== undefined ? { role } : {}),
         ...(roles !== undefined ? { roles } : {}),
         ...(sourceModule !== undefined ? { sourceModule } : {}),
@@ -452,7 +446,6 @@ export class HttpModule {
       roleBindingContribs.length > 0 ||
       rawRoutes.some(
         (c) =>
-          c.data.endpoints !== undefined ||
           c.data.role !== undefined ||
           c.data.roles !== undefined,
       );
@@ -462,8 +455,10 @@ export class HttpModule {
       typeof this.agentAuth?.registerRoleBinding === "function";
 
     const routes = [...rawRoutes]
-      .map((c) => ({
+      .map((c, index) => ({
         id: c.id,
+        from: ((c as { readonly from?: string }).from ?? ""),
+        index,
         ...(c.data.method !== undefined ? { method: c.data.method as HttpMethod } : {}),
         prefix: c.data.prefix as string,
         auth: c.data.auth as "user" | "token" | "none",
@@ -471,7 +466,7 @@ export class HttpModule {
         ...(c.data.origin === "own" ? { origin: "own" as const } : {}),
         app: c.code as Hono<AppEnv>,
       }))
-      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+      .sort((a, b) => a.order - b.order || a.from.localeCompare(b.from) || a.index - b.index);
     for (const r of routes) adoptGroup(r.app);
     const upgrade = upgradeDispatch(
       (contributions.upgrades ?? []).map((c) => ({
