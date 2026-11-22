@@ -1926,14 +1926,6 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         order: 100,
       },
       {
-        id: "model.oauth.list",
-        method: "GET",
-        prefix: "/api/projects/:projectId/model-oauth",
-        auth: "user",
-        role: "model.read",
-        order: 110,
-      },
-      {
         id: "model.oauth.start",
         method: "POST",
         prefix: "/api/projects/:projectId/model-oauth/start",
@@ -2737,7 +2729,6 @@ export class SessionApiRoutes {
   @Bind("model.detect") modelDetectRoute!: Hono<AppEnv>;
   @Bind("model.listRemote") modelListRemoteRoute!: Hono<AppEnv>;
   @Bind("model.detectVision") modelDetectVisionRoute!: Hono<AppEnv>;
-  @Bind("model.oauth.list") modelOauthListRoute!: Hono<AppEnv>;
   @Bind("model.oauth.start") modelOauthStartRoute!: Hono<AppEnv>;
   @Bind("model.oauth.submitCode") modelOauthSubmitCodeRoute!: Hono<AppEnv>;
   @Bind("model.oauth.getStatus") modelOauthGetStatusRoute!: Hono<AppEnv>;
@@ -2902,7 +2893,6 @@ export class SessionApiRoutes {
     this.modelListRemoteRoute = endpointOf(modelsGroup, "POST", "/list");
     this.modelDetectVisionRoute = endpointOf(modelsGroup, "POST", "/detect-vision");
     const oauthGroup = modelOAuthRoutes(modelOAuthDeps);
-    this.modelOauthListRoute = endpointOf(oauthGroup, "GET", "/");
     this.modelOauthStartRoute = endpointOf(oauthGroup, "POST", "/start");
     this.modelOauthSubmitCodeRoute = endpointOf(oauthGroup, "POST", "/:flowId/code");
     this.modelOauthGetStatusRoute = endpointOf(oauthGroup, "GET", "/:flowId");
