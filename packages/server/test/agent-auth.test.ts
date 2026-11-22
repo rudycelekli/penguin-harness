@@ -858,7 +858,7 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
     const customGrant = agentAuth.currentGrant("p1", "a1")!;
     expect(customGrant.inheritedRoles).toContain("agent.read");
     expect(customGrant.inheritedRoles).toContain("session.maintain");
-    expect(customGrant.refinedRoutes?.get("vault.update")).toEqual(["withAsk"]);
+    expect(customGrant.routeRefiners?.["vault.update"]).toEqual(["withAsk"]);
 
     // 3. Clear rejection reason with suggestedWithAsk and upgradeRequestEndpoint
     const modelDenied = await req("PUT", "/api/projects/p1/models", token);

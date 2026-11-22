@@ -514,7 +514,7 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
       fallbackOnUnknownPrimary: true,
     });
     const grant: AgentAuthGrant = {
-      role,
+      role: expanded.mismatches.fallbackRole ?? role,
       generation,
       allEndpoints: expanded.allEndpoints,
       agentApi: expanded.agentApi,

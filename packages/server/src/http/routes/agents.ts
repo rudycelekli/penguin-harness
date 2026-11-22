@@ -190,9 +190,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
     deps.access.requireProjectAccess(c.var.user.userId, projectId);
     const current = deps.agentAuth.generationOf(projectId, agentId);
     const grant = deps.agentAuth.currentGrant(projectId, agentId);
-    const refinedRoutes = Object.fromEntries(
-      Array.from(grant?.refinedRoutes?.entries() ?? []).map(([k, v]) => [k, [...v]]),
-    );
+    const refinedRoutes = grant?.routeRefiners ?? {};
     return c.json({
       projectId,
       agentId,
@@ -274,9 +272,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       },
     );
     const grant = deps.agentAuth.currentGrant(projectId, agentId);
-    const refinedRoutes = Object.fromEntries(
-      Array.from(grant?.refinedRoutes?.entries() ?? []).map(([k, v]) => [k, [...v]]),
-    );
+    const refinedRoutes = grant?.routeRefiners ?? {};
     return c.json({
       projectId,
       agentId,
