@@ -767,18 +767,77 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
     expect(orgFailure.bindingSourceModules).toContain("OrgRoutes");
   });
 
+  function httpWithStandardRoutes(agentAuth: AgentAuthService, withAskRefiner: AuthWithAskRefiner) {
+    const agentConfigGroup = new Hono<AppEnv>();
+    agentConfigGroup.get("/", (c) => c.json({ ok: "getConfig", agentId: c.req.param("agentId") }));
+    agentConfigGroup.put("/", (c) => c.json({ ok: "putConfig", agentId: c.req.param("agentId") }));
+    const vaultGroup = new Hono<AppEnv>();
+    vaultGroup.put("/", (c) => c.json({ ok: "putVault", agentId: c.req.param("agentId") }));
+    const modelGroup = new Hono<AppEnv>();
+    modelGroup.put("/", (c) => c.json({ ok: "putModels", projectId: c.req.param("projectId") }));
+
+    return buildTestHttp(agentAuth, {
+      authRefiners: [
+        {
+          id: "withAsk",
+          from: "AuthWithAskRefiner",
+          data: { scope: ["*"], order: 1000 },
+          code: withAskRefiner,
+        },
+        {
+          id: "self",
+          from: "AuthSelfRefiner",
+          data: { scope: ["agent.", "vault.", "schedule."], order: 1001 },
+          code: new AuthSelfRefiner(),
+        },
+      ],
+      routes: [
+        routeEntry(
+          "agent.config.get",
+          "GET",
+          "/api/projects/:projectId/agents/:agentId/config",
+          endpointOf(agentConfigGroup, "GET", "/"),
+          { role: "agent.read" },
+        ),
+        routeEntry(
+          "agent.config.update",
+          "PUT",
+          "/api/projects/:projectId/agents/:agentId/config",
+          endpointOf(agentConfigGroup, "PUT", "/"),
+          { role: "agent.maintain" },
+        ),
+        routeEntry(
+          "vault.update",
+          "PUT",
+          "/api/projects/:projectId/agents/:agentId/vault",
+          endpointOf(vaultGroup, "PUT", "/"),
+          { role: "vault.maintain" },
+        ),
+        routeEntry(
+          "model.update",
+          "PUT",
+          "/api/projects/:projectId/models",
+          endpointOf(modelGroup, "PUT", "/"),
+          { role: "model.maintain" },
+        ),
+      ],
+    });
+  }
+
   it("supports AgentRole aggregation, general-with-ask workflow, suggestedWithAsk failure hints, and role mismatch fallback", async () => {
     const { auth: agentAuth } = service();
     const askLog: string[] = [];
-    const { req } = httpWithRoutes(agentAuth, [
+    const { req } = httpWithStandardRoutes(
+      agentAuth,
       new AuthWithAskRefiner((_ctx, action) => {
         askLog.push(`${action.routeId}:${action.params.agentId ?? "-"}`);
         return "allowed_once";
       }),
-    ]);
+    );
 
     // 1. Default workflow `general-with-ask`: @self passes without prompting, cross-agent & vault fall back to @withAsk
-    const { token } = agentAuth.issueSession("p1", "a1", new Date(), "general-with-ask");
+    const { token } = agentAuth.issueSession("p1", "a1", new Date());
+    agentAuth.updateGrant("p1", "a1", "general-with-ask", [], new Date());
     expect((await req("PUT", "/api/projects/p1/agents/a1/config", token)).status).toBe(200);
     expect(askLog).toEqual([]);
 
@@ -851,14 +910,16 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
     const { auth: agentAuth } = service();
     let askMode: "allowed_once" | "allowed_for_agent" | "always_allowed" | "deny" = "deny";
     let askCount = 0;
-    const { req } = httpWithRoutes(agentAuth, [
+    const { req } = httpWithStandardRoutes(
+      agentAuth,
       new AuthWithAskRefiner(() => {
         askCount++;
         return askMode;
       }),
-    ]);
+    );
 
-    const { token } = agentAuth.issueSession("p1", "a1", new Date(), "general");
+    const { token } = agentAuth.issueSession("p1", "a1", new Date());
+    agentAuth.updateGrant("p1", "a1", "general", [], new Date());
 
     // Initially vault.update is denied for role=general
     expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(403);
