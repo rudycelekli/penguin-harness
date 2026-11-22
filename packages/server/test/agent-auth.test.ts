@@ -549,7 +549,7 @@ describe("auth refiners (<roleOrRoute>@<refinerId>)", () => {
             code: endpointOf(agentConfigGroup, "PUT", "/"),
           },
           {
-            id: "schedule.upsert",
+            id: "schedule.update",
             from: "test",
             data: {
               method: "PUT",

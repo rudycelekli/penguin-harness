@@ -671,8 +671,19 @@ export class HttpModule {
       c.var.sessionVia === "token" && bearerToken(c.req.header("authorization")) !== null
         ? next()
         : authenticateToken(c, next);
+    const userGatedPrefixes = new Set<string>();
+    const tokenGatedPrefixes = new Set<string>();
     const mount = (r: (typeof routes)[number]) => {
       // Each group keeps its own gate, including protected prefixes outside /api.
+      const wildcardPrefix = `${r.prefix.replace(/\/$/, "")}/*`;
+      if (r.auth === "user" && !userGatedPrefixes.has(wildcardPrefix)) {
+        userGatedPrefixes.add(wildcardPrefix);
+        app.use(wildcardPrefix, once);
+      }
+      if (r.auth === "token" && !tokenGatedPrefixes.has(wildcardPrefix)) {
+        tokenGatedPrefixes.add(wildcardPrefix);
+        app.use(wildcardPrefix, tokenGate);
+      }
       if (r.method !== undefined) {
         // A single-(method, prefix) group: the gate and the Agent-role check ride on that one
         // method, so another group's wider gate under the same prefix is not crossed.
@@ -695,13 +706,11 @@ export class HttpModule {
         // Each group keeps its own gate, including protected prefixes outside /api; the
         // Agent-role check wraps the group's own handlers (withRouteAuth).
         if (r.auth === "user") {
-          app.use(`${r.prefix.replace(/\/$/, "")}/*`, once);
           app.route(
             r.prefix,
             withRouteAuth(r.app, r.id, refinerRegistry, roleRegistry, this.log),
           );
         } else {
-          if (r.auth === "token") app.use(`${r.prefix.replace(/\/$/, "")}/*`, tokenGate);
           app.route(r.prefix, r.app);
         }
       }

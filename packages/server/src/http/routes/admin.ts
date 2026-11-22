@@ -151,6 +151,14 @@ export function adminUsersRoutes(deps: AdminRouteDeps): Hono<AppEnv> {
         order: 45,
       },
       {
+        id: "admin.pluginConfig.getIcon",
+        method: "GET",
+        prefix: "/api/admin/plugin-config/icon",
+        auth: "user",
+        role: "admin.read",
+        order: 45,
+      },
+      {
         id: "admin.pluginConfig.update",
         method: "PUT",
         prefix: "/api/admin/plugin-config",
@@ -184,6 +192,7 @@ export class AdminRoutes {
   @Bind("admin.settings.listProxyProbes") settingsListProxyProbesRoute!: Hono<AppEnv>;
   @Bind("admin.settings.runProxyProbe") settingsRunProxyProbeRoute!: Hono<AppEnv>;
   @Bind("admin.pluginConfig.get") pluginConfigGetRoute!: Hono<AppEnv>;
+  @Bind("admin.pluginConfig.getIcon") pluginConfigGetIconRoute!: Hono<AppEnv>;
   @Bind("admin.pluginConfig.update") pluginConfigUpdateRoute!: Hono<AppEnv>;
   @Bind("admin.pluginConfig.action") pluginConfigActionRoute!: Hono<AppEnv>;
   setup({ resources }: ClassCtx) {
@@ -192,6 +201,7 @@ export class AdminRoutes {
       icon: (plugin) => pluginPackageDisplayOf(pluginHostFrom(resources), plugin).icon,
     });
     this.pluginConfigGetRoute = endpointOf(pcGroup, "GET", "/");
+    this.pluginConfigGetIconRoute = endpointOf(pcGroup, "GET", "/icon");
     this.pluginConfigUpdateRoute = endpointOf(pcGroup, "PUT", "/");
     this.pluginConfigActionRoute = endpointOf(pcGroup, "POST", "/action");
     const uGroup = adminUsersRoutes({
