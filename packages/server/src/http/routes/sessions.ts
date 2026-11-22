@@ -1790,53 +1790,22 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.session.read", role: "session.read", parents: ["readonly"] },
-      {
-        id: "role.session.maintain",
-        role: "session.maintain",
-        children: ["session.read"],
-        parents: ["general"],
-      },
-      {
-        id: "role.session.all",
-        role: "session.all",
-        children: ["session.maintain"],
-        parents: ["system-maintainer"],
-      },
-      { id: "role.workspace.read", role: "workspace.read", parents: ["readonly"] },
-      {
-        id: "role.workspace.maintain",
-        role: "workspace.maintain",
-        children: ["workspace.read"],
-        parents: ["general"],
-      },
+      { id: "role.session.read", parents: ["readonly"] },
+      { id: "role.session.maintain", children: ["session.read"], parents: ["general"] },
+      { id: "role.session.all", children: ["session.maintain"], parents: ["system-maintainer"] },
+      { id: "role.workspace.read", parents: ["readonly"] },
+      { id: "role.workspace.maintain", children: ["workspace.read"], parents: ["general"] },
       {
         id: "role.workspace.all",
-        role: "workspace.all",
         children: ["workspace.maintain"],
         parents: ["system-maintainer"],
       },
-      { id: "role.model.read", role: "model.read", parents: ["readonly"] },
-      {
-        id: "role.model.maintain",
-        role: "model.maintain",
-        children: ["model.read"],
-        parents: ["system-maintainer"],
-      },
-      {
-        id: "role.model.all",
-        role: "model.all",
-        children: ["model.maintain"],
-        parents: ["admin"],
-      },
-      { id: "role.vault.read", role: "vault.read", parents: ["system-maintainer"] },
-      { id: "role.vault.maintain", role: "vault.maintain", children: ["vault.read"] },
-      {
-        id: "role.vault.all",
-        role: "vault.all",
-        children: ["vault.maintain"],
-        parents: ["admin"],
-      },
+      { id: "role.model.read", parents: ["readonly"] },
+      { id: "role.model.maintain", children: ["model.read"], parents: ["system-maintainer"] },
+      { id: "role.model.all", children: ["model.maintain"], parents: ["admin"] },
+      { id: "role.vault.read", parents: ["system-maintainer"] },
+      { id: "role.vault.maintain", children: ["vault.read"] },
+      { id: "role.vault.all", children: ["vault.maintain"], parents: ["admin"] },
     ],
     "HttpModule.routes": [
       {

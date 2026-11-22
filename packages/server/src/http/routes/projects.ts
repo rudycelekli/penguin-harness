@@ -73,14 +73,9 @@ export function projectsRoutes(deps: ProjectsRouteDeps): Hono<AppEnv> {
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.project.read", role: "project.read", parents: ["readonly"] },
-      { id: "role.project.maintain", role: "project.maintain", children: ["project.read"] },
-      {
-        id: "role.project.all",
-        role: "project.all",
-        children: ["project.maintain"],
-        parents: ["admin"],
-      },
+      { id: "role.project.read", parents: ["readonly"] },
+      { id: "role.project.maintain", children: ["project.read"] },
+      { id: "role.project.all", children: ["project.maintain"], parents: ["admin"] },
     ],
     "HttpModule.routes": [
       {

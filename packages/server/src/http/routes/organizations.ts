@@ -1011,60 +1011,23 @@ function parseModel(
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.org.employee.read", role: "org.employee.read" },
-      {
-        id: "role.org.employee.maintain",
-        role: "org.employee.maintain",
-        children: ["org.employee.read"],
-      },
-      {
-        id: "role.org.employee.all",
-        role: "org.employee.all",
-        children: ["org.employee.maintain"],
-      },
-      { id: "role.org.handbook.read", role: "org.handbook.read" },
-      {
-        id: "role.org.handbook.maintain",
-        role: "org.handbook.maintain",
-        children: ["org.handbook.read"],
-      },
-      {
-        id: "role.org.handbook.all",
-        role: "org.handbook.all",
-        children: ["org.handbook.maintain"],
-      },
-      { id: "role.org.calendar.read", role: "org.calendar.read" },
-      {
-        id: "role.org.calendar.maintain",
-        role: "org.calendar.maintain",
-        children: ["org.calendar.read"],
-      },
-      {
-        id: "role.org.calendar.all",
-        role: "org.calendar.all",
-        children: ["org.calendar.maintain"],
-      },
-      { id: "role.org.ticket.read", role: "org.ticket.read" },
-      {
-        id: "role.org.ticket.maintain",
-        role: "org.ticket.maintain",
-        children: ["org.ticket.read"],
-      },
-      { id: "role.org.channel.read", role: "org.channel.read" },
-      {
-        id: "role.org.channel.maintain",
-        role: "org.channel.maintain",
-        children: ["org.channel.read"],
-      },
-      {
-        id: "role.org.channel.all",
-        role: "org.channel.all",
-        children: ["org.channel.maintain"],
-      },
-      { id: "role.org.finance.read", role: "org.finance.read" },
+      { id: "role.org.employee.read" },
+      { id: "role.org.employee.maintain", children: ["org.employee.read"] },
+      { id: "role.org.employee.all", children: ["org.employee.maintain"] },
+      { id: "role.org.handbook.read" },
+      { id: "role.org.handbook.maintain", children: ["org.handbook.read"] },
+      { id: "role.org.handbook.all", children: ["org.handbook.maintain"] },
+      { id: "role.org.calendar.read" },
+      { id: "role.org.calendar.maintain", children: ["org.calendar.read"] },
+      { id: "role.org.calendar.all", children: ["org.calendar.maintain"] },
+      { id: "role.org.ticket.read" },
+      { id: "role.org.ticket.maintain", children: ["org.ticket.read"] },
+      { id: "role.org.channel.read" },
+      { id: "role.org.channel.maintain", children: ["org.channel.read"] },
+      { id: "role.org.channel.all", children: ["org.channel.maintain"] },
+      { id: "role.org.finance.read" },
       {
         id: "role.org.read",
-        role: "org.read",
         children: [
           "org.employee.read",
           "org.handbook.read",
@@ -1077,7 +1040,6 @@ function parseModel(
       },
       {
         id: "role.org.maintain",
-        role: "org.maintain",
         children: [
           "org.read",
           "org.employee.maintain",
@@ -1090,7 +1052,6 @@ function parseModel(
       },
       {
         id: "role.org.all",
-        role: "org.all",
         children: [
           "org.maintain",
           "org.employee.all",
@@ -1417,7 +1378,8 @@ function parseModel(
       {
         id: "org.channel.removeMember",
         method: "DELETE",
-        prefix: "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members/:principal",
+        prefix:
+          "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members/:principal",
         auth: "user",
         role: "org.channel.all",
         order: 145,

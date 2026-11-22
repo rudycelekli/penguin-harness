@@ -808,16 +808,10 @@ export function appCenterRoutes(deps: AppCenterRouteDeps) {
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.workbench.read", role: "workbench.read", parents: ["readonly"] },
-      {
-        id: "role.workbench.maintain",
-        role: "workbench.maintain",
-        children: ["workbench.read"],
-        parents: ["general@self"],
-      },
+      { id: "role.workbench.read", parents: ["readonly"] },
+      { id: "role.workbench.maintain", children: ["workbench.read"], parents: ["general@self"] },
       {
         id: "role.workbench.all",
-        role: "workbench.all",
         children: ["workbench.maintain"],
         parents: ["system-maintainer"],
       },
@@ -966,6 +960,14 @@ export function appCenterRoutes(deps: AppCenterRouteDeps) {
         order: 20,
       },
       {
+        id: "workbench.appCenter.listHidden",
+        method: "GET",
+        prefix: "/api/projects/:projectId/app-center/hidden",
+        auth: "user",
+        role: "workbench.read",
+        order: 20,
+      },
+      {
         id: "workbench.appCenter.updateLayout",
         method: "PUT",
         prefix: "/api/projects/:projectId/app-center/layout",
@@ -1003,6 +1005,7 @@ export class WorkbenchRoutes {
   @Bind("workbench.serveSdkFile") serveSdkFileRoute!: Hono<AppEnv>;
   @Bind("workbench.callApi") callApiRoute!: Hono<AppEnv>;
   @Bind("workbench.appCenter.list") appCenterListRoute!: Hono<AppEnv>;
+  @Bind("workbench.appCenter.listHidden") appCenterListHiddenRoute!: Hono<AppEnv>;
   @Bind("workbench.appCenter.updateLayout") appCenterUpdateLayoutRoute!: Hono<AppEnv>;
   setup() {
     const group = workbenchRoutes({
@@ -1034,6 +1037,7 @@ export class WorkbenchRoutes {
       projects: this.projects,
     });
     this.appCenterListRoute = endpointOf(acGroup, "GET", "/");
+    this.appCenterListHiddenRoute = endpointOf(acGroup, "GET", "/hidden");
     this.appCenterUpdateLayoutRoute = endpointOf(acGroup, "PUT", "/layout");
     // The manifest answers without a session (see manifestRoutes): it reads only the
     // workbench's own registration — its name, version, tabs and icon — nothing per-user.

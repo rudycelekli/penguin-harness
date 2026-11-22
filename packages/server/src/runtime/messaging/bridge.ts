@@ -2201,32 +2201,17 @@ export interface MessagingSlots {
 @Module({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.agents.messaging.read", role: "agents.messaging.read" },
-      {
-        id: "role.agents.messaging.maintain",
-        role: "agents.messaging.maintain",
-        children: ["agents.messaging.read"],
-      },
-      {
-        id: "role.agents.messaging.all",
-        role: "agents.messaging.all",
-        children: ["agents.messaging.maintain"],
-      },
-      {
-        id: "role.messaging.read",
-        role: "messaging.read",
-        children: ["agents.messaging.read"],
-        parents: ["readonly"],
-      },
+      { id: "role.agents.messaging.read" },
+      { id: "role.agents.messaging.maintain", children: ["agents.messaging.read"] },
+      { id: "role.agents.messaging.all", children: ["agents.messaging.maintain"] },
+      { id: "role.messaging.read", children: ["agents.messaging.read"], parents: ["readonly"] },
       {
         id: "role.messaging.maintain",
-        role: "messaging.maintain",
         children: ["messaging.read", "agents.messaging.maintain"],
         parents: ["system-maintainer"],
       },
       {
         id: "role.messaging.all",
-        role: "messaging.all",
         children: ["messaging.maintain", "agents.messaging.all"],
         parents: ["admin"],
       },

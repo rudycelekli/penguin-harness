@@ -68,14 +68,9 @@ export function adminUsersRoutes(deps: AdminRouteDeps): Hono<AppEnv> {
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.admin.read", role: "admin.read" },
-      { id: "role.admin.maintain", role: "admin.maintain", children: ["admin.read"] },
-      {
-        id: "role.admin.all",
-        role: "admin.all",
-        children: ["admin.maintain"],
-        parents: ["admin"],
-      },
+      { id: "role.admin.read" },
+      { id: "role.admin.maintain", children: ["admin.read"] },
+      { id: "role.admin.all", children: ["admin.maintain"], parents: ["admin"] },
     ],
     "HttpModule.routes": [
       {

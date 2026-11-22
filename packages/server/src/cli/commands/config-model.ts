@@ -22,14 +22,14 @@ import {
   unaddableModel,
   unroutableVendorModel,
 } from "../../model-catalog/catalog.js";
-import { ApiError, ServerClient } from "../client.js";
-import { resolveConnection } from "../connection.js";
 import type { Messages } from "../i18n.js";
 import {
   addGroupConnection,
+  configClient,
   connectionPatch,
   projectConfigFromModelsResponse,
   refuse,
+  refuseErr,
   removeGroupConnection,
   toModelUpdateEntry,
 } from "./config-group.js";
@@ -99,10 +99,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
         return;
       }
       const { patch } = parsed;
-      const client = new ServerClient(
-        await resolveConnection({ server: opts.server, root: opts.root }, t),
-        t,
-      );
+      const client = await configClient(opts, t);
       const modelsPath = `/api/projects/${enc(opts.projectId)}/models`;
       const beforeRes = await client.request<ModelsResponse>("GET", modelsPath);
       const before = projectConfigFromModelsResponse(beforeRes);
@@ -206,9 +203,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
 
       const nextModels: ModelUpdateEntry[] = existed
         ? beforeRes.models.map((m) =>
-            m.provider === provider && m.modelId === modelId
-              ? updatedEntry
-              : toModelUpdateEntry(m),
+            m.provider === provider && m.modelId === modelId ? updatedEntry : toModelUpdateEntry(m),
           )
         : [...beforeRes.models.map(toModelUpdateEntry), updatedEntry];
 
@@ -219,13 +214,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
           ...(opts.setDefault ? { defaultModel: { provider, modelId } } : {}),
         });
       } catch (err) {
-        const msg =
-          err instanceof ApiError && err.detail
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        refuse(t, msg);
+        refuseErr(t, err);
         return;
       }
       const cfg = projectConfigFromModelsResponse(afterRes);
@@ -264,10 +253,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
     .action(async (opts) => {
       const ref: ModelRef = { provider: opts.provider, model_id: opts.modelId };
       try {
-        const client = new ServerClient(
-          await resolveConnection({ server: opts.server, root: opts.root }, t),
-          t,
-        );
+        const client = await configClient(opts, t);
         const modelsPath = `/api/projects/${enc(opts.projectId)}/models`;
         const before = await client.request<ModelsResponse>("GET", modelsPath);
         if (!before.models.some((m) => m.provider === ref.provider && m.modelId === ref.model_id)) {
@@ -282,13 +268,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
           modelId: ref.model_id,
         });
       } catch (err) {
-        const msg =
-          err instanceof ApiError && err.detail
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        refuse(t, msg);
+        refuseErr(t, err);
         return;
       }
       process.stdout.write(`${t.defaultModelSet(formatModelRef(ref))}\n`);
@@ -305,10 +285,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
     .action(async (opts) => {
       const ref: ModelRef = { provider: opts.provider, model_id: opts.modelId };
       try {
-        const client = new ServerClient(
-          await resolveConnection({ server: opts.server, root: opts.root }, t),
-          t,
-        );
+        const client = await configClient(opts, t);
         const modelsPath = `/api/projects/${enc(opts.projectId)}/models`;
         const before = await client.request<ModelsResponse>("GET", modelsPath);
         const entry = before.models.find(
@@ -333,13 +310,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
           visionModel: { provider: ref.provider, modelId: ref.model_id },
         });
       } catch (err) {
-        const msg =
-          err instanceof ApiError && err.detail
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        refuse(t, msg);
+        refuseErr(t, err);
         return;
       }
       process.stdout.write(`${t.visionModelSet(formatModelRef(ref))}\n`);
@@ -352,10 +323,7 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
     .option("--server <url>", t.common.server)
     .option("--root <dir>", t.common.root)
     .action(async (opts) => {
-      const client = new ServerClient(
-        await resolveConnection({ server: opts.server, root: opts.root }, t),
-        t,
-      );
+      const client = await configClient(opts, t);
       const res = await client.request<ModelsResponse>(
         "GET",
         `/api/projects/${enc(opts.projectId)}/models`,
@@ -391,13 +359,12 @@ export function registerConfigModelCommand(model: Command, t: Messages): void {
         return;
       }
       const ref: ModelRef = { provider: opts.provider, model_id: opts.modelId };
-      const client = new ServerClient(
-        await resolveConnection({ server: opts.server, root: opts.root }, t),
-        t,
-      );
+      const client = await configClient(opts, t);
       const modelsPath = `/api/projects/${enc(opts.projectId)}/models`;
       const beforeRes = await client.request<ModelsResponse>("GET", modelsPath);
-      if (!beforeRes.models.some((m) => m.provider === ref.provider && m.modelId === ref.model_id)) {
+      if (
+        !beforeRes.models.some((m) => m.provider === ref.provider && m.modelId === ref.model_id)
+      ) {
         process.stderr.write(`${t.modelNotConfigured(formatModelRef(ref))}\n`);
         process.exitCode = 1;
         return;

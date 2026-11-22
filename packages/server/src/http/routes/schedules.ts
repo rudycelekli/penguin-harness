@@ -335,19 +335,9 @@ async function readItem(
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.schedule.read", role: "schedule.read", parents: ["readonly"] },
-      {
-        id: "role.schedule.maintain",
-        role: "schedule.maintain",
-        children: ["schedule.read"],
-        parents: ["general@self"],
-      },
-      {
-        id: "role.schedule.all",
-        role: "schedule.all",
-        children: ["schedule.maintain"],
-        parents: ["system-maintainer"],
-      },
+      { id: "role.schedule.read", parents: ["readonly"] },
+      { id: "role.schedule.maintain", children: ["schedule.read"], parents: ["general@self"] },
+      { id: "role.schedule.all", children: ["schedule.maintain"], parents: ["system-maintainer"] },
     ],
     "HttpModule.routes": [
       {

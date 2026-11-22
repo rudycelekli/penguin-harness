@@ -3633,19 +3633,9 @@ export abstract class Machines extends Interface<
 @Module({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.machine.read", role: "machine.read", parents: ["readonly"] },
-      {
-        id: "role.machine.maintain",
-        role: "machine.maintain",
-        children: ["machine.read"],
-        parents: ["system-maintainer"],
-      },
-      {
-        id: "role.machine.all",
-        role: "machine.all",
-        children: ["machine.maintain"],
-        parents: ["admin"],
-      },
+      { id: "role.machine.read", parents: ["readonly"] },
+      { id: "role.machine.maintain", children: ["machine.read"], parents: ["system-maintainer"] },
+      { id: "role.machine.all", children: ["machine.maintain"], parents: ["admin"] },
     ],
     "HttpModule.routes": [
       {

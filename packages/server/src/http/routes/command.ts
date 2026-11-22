@@ -96,19 +96,9 @@ import { endpointOf } from "../app.js";
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.command.read", role: "command.read", parents: ["readonly"] },
-      {
-        id: "role.command.maintain",
-        role: "command.maintain",
-        children: ["command.read"],
-        parents: ["general"],
-      },
-      {
-        id: "role.command.all",
-        role: "command.all",
-        children: ["command.maintain"],
-        parents: ["admin"],
-      },
+      { id: "role.command.read", parents: ["readonly"] },
+      { id: "role.command.maintain", children: ["command.read"], parents: ["general"] },
+      { id: "role.command.all", children: ["command.maintain"], parents: ["admin"] },
     ],
     "HttpModule.routes": [
       {

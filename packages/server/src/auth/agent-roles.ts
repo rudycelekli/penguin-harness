@@ -5,11 +5,9 @@
 import table from "../ifaces.json" with { type: "json" };
 
 export type AgentAuthRole = string;
-export type BuiltinAgentAuthRole = string;
 export type RoleChildRef = string;
 
 export const DEFAULT_AGENT_AUTH_ROLE: AgentAuthRole = "general";
-export const ALL_ENDPOINT_ROLES: readonly AgentAuthRole[] = ["admin", "full-permissions"];
 
 export interface RoleFlags {
   allEndpoints?: boolean;
@@ -82,12 +80,13 @@ interface RouteMeta {
   requiredRoles: Set<string>;
 }
 
-interface CompiledGrantMeta {
-  readonly unconditionalSet: ReadonlySet<string>;
-  readonly routeRefinerMap: ReadonlyMap<string, readonly string[]>;
-}
-
-const COMPILED_GRANT_META = new WeakMap<ReadonlySet<string>, CompiledGrantMeta>();
+const COMPILED_GRANT_META = new WeakMap<
+  ReadonlySet<string>,
+  {
+    readonly unconditionalSet: ReadonlySet<string>;
+    readonly routeRefinerMap: ReadonlyMap<string, readonly string[]>;
+  }
+>();
 
 export function parseRefinedGrant(spec: string): RefinedGrantRef {
   const trimmed = spec.trim();
@@ -106,6 +105,12 @@ export function assertNoWildcard(value: string, context: string): void {
   }
 }
 
+function candidateIds(reg: RoleRegistry, routeId: string, groupId?: string): readonly string[] {
+  const norm = reg.normalizeRouteId(routeId);
+  const normGroup = groupId !== undefined ? reg.normalizeRouteId(groupId) : undefined;
+  return [norm, routeId, ...(normGroup !== undefined ? [normGroup, groupId!] : [])];
+}
+
 export function matchesRouteGrant(
   grantedApiIds: ReadonlySet<string> | readonly string[],
   routeId: string,
@@ -114,9 +119,7 @@ export function matchesRouteGrant(
 ): boolean {
   assertNoWildcard(routeId, "matchesRouteGrant(routeId)");
   if (groupId !== undefined) assertNoWildcard(groupId, "matchesRouteGrant(groupId)");
-  const norm = registry.normalizeRouteId(routeId);
-  const normGroup = groupId !== undefined ? registry.normalizeRouteId(groupId) : undefined;
-  const candidates = [norm, routeId, ...(normGroup !== undefined ? [normGroup, groupId!] : [])];
+  const candidates = candidateIds(registry, routeId, groupId);
   if (!Array.isArray(grantedApiIds)) {
     const set = grantedApiIds as ReadonlySet<string>;
     return candidates.some((id) => set.has(id));
@@ -132,47 +135,15 @@ export function resolveRouteRefiners(
   grantedApiIds: ReadonlySet<string>,
   routeId: string,
   groupId?: string,
-  registry?: RoleRegistry,
-): readonly string[] | undefined;
-export function resolveRouteRefiners(
-  routeRefiners: Readonly<Record<string, readonly string[]>> | undefined,
-  grantedApiIds: ReadonlySet<string> | readonly string[],
-  routeId: string,
-  groupId?: string,
-  registry?: RoleRegistry,
-): readonly string[] | undefined;
-export function resolveRouteRefiners(
-  grantOrRefiners: ReadonlySet<string> | Readonly<Record<string, readonly string[]>> | undefined,
-  routeIdOrGranted: string | ReadonlySet<string> | readonly string[],
-  groupIdOrRouteId?: string,
-  registryOrGroupId?: RoleRegistry | string,
-  maybeRegistry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
+  registry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
 ): readonly string[] | undefined {
-  if (grantOrRefiners instanceof Set) {
-    const meta = COMPILED_GRANT_META.get(grantOrRefiners);
-    if (!meta) return undefined;
-    const routeId = routeIdOrGranted as string;
-    const groupId = groupIdOrRouteId;
-    const reg = registryOrGroupId instanceof RoleRegistry ? registryOrGroupId : DEFAULT_ROLE_REGISTRY;
-    const norm = reg.normalizeRouteId(routeId);
-    const normGroup = groupId !== undefined ? reg.normalizeRouteId(groupId) : undefined;
-    const candidates = [norm, routeId, ...(normGroup !== undefined ? [normGroup, groupId!] : [])];
-    if (candidates.some((id) => meta.unconditionalSet.has(id))) return undefined;
-    return (
-      meta.routeRefinerMap.get(norm) ??
-      meta.routeRefinerMap.get(routeId) ??
-      (normGroup !== undefined ? meta.routeRefinerMap.get(normGroup) : undefined)
-    );
-  }
-  const routeRefiners = grantOrRefiners as Readonly<Record<string, readonly string[]>> | undefined;
-  if (!routeRefiners) return undefined;
-  const routeId = groupIdOrRouteId as string;
-  const groupId = typeof registryOrGroupId === "string" ? registryOrGroupId : undefined;
-  const reg = registryOrGroupId instanceof RoleRegistry ? registryOrGroupId : maybeRegistry;
-  const norm = reg.normalizeRouteId(routeId);
-  const normGroup = groupId !== undefined ? reg.normalizeRouteId(groupId) : undefined;
-  for (const key of [norm, routeId, ...(normGroup !== undefined ? [normGroup] : [])]) {
-    if (Object.hasOwn(routeRefiners, key)) return routeRefiners[key];
+  const meta = COMPILED_GRANT_META.get(grantedApiIds);
+  if (!meta) return undefined;
+  const candidates = candidateIds(registry, routeId, groupId);
+  if (candidates.some((id) => meta.unconditionalSet.has(id))) return undefined;
+  for (const key of candidates) {
+    const found = meta.routeRefinerMap.get(key);
+    if (found !== undefined) return found;
   }
   return undefined;
 }
@@ -190,37 +161,46 @@ export class RoleRegistry {
 
   constructor(options?: { seedBuiltin?: boolean }) {
     if (options?.seedBuiltin !== false) {
-      this.seedFromManifests(
-        (table as { modules?: Record<string, { contributes?: Record<string, unknown[]> }> }).modules ?? {},
-      );
+      const modules =
+        (table as { modules?: Record<string, { contributes?: Record<string, unknown[]> }> })
+          .modules ?? {};
+      for (const [modName, mod] of Object.entries(modules)) {
+        for (const slot of ["AgentAuthPermissionProvider.roles", "HttpModule.roles"]) {
+          const items = mod.contributes?.[slot] as
+            ReadonlyArray<{ id: string } & RoleContribution> | undefined;
+          if (items) for (const item of items) this.registerRole(item.id, item, modName);
+        }
+      }
+      for (const [modName, mod] of Object.entries(modules)) {
+        for (const slot of [
+          "AgentAuthPermissionProvider.roleBindings",
+          "HttpModule.roleBindings",
+        ]) {
+          const items = mod.contributes?.[slot] as
+            ReadonlyArray<RoleHttpBindingContribution> | undefined;
+          if (items) for (const item of items) this.registerRoleBinding(item, modName);
+        }
+      }
+      for (const [modName, mod] of Object.entries(modules)) {
+        const routes = mod.contributes?.["HttpModule.routes"] as
+          ReadonlyArray<RouteRoleRegistration> | undefined;
+        if (routes) for (const route of routes) this.registerRoute(route, modName);
+      }
     }
   }
 
-  private seedFromManifests(
-    modules: Readonly<Record<string, { readonly contributes?: Readonly<Record<string, unknown[]>> }>>,
-  ): void {
-    for (const [modName, mod] of Object.entries(modules)) {
-      for (const slot of ["AgentAuthPermissionProvider.roles", "HttpModule.roles"]) {
-        const items = mod.contributes?.[slot] as ReadonlyArray<{ id: string } & RoleContribution> | undefined;
-        if (items) for (const item of items) this.registerRole(item.id, item, modName);
-      }
-    }
-    for (const [modName, mod] of Object.entries(modules)) {
-      for (const slot of ["AgentAuthPermissionProvider.roleBindings", "HttpModule.roleBindings"]) {
-        const items = mod.contributes?.[slot] as ReadonlyArray<RoleHttpBindingContribution> | undefined;
-        if (items) for (const item of items) this.registerRoleBinding(item, modName);
-      }
-    }
-    for (const [modName, mod] of Object.entries(modules)) {
-      const routes = mod.contributes?.["HttpModule.routes"] as ReadonlyArray<RouteRoleRegistration> | undefined;
-      if (routes) for (const route of routes) this.registerRoute(route, modName);
-    }
+  get version(): number {
+    return this.registryVersion;
   }
-
-  get version(): number { return this.registryVersion; }
-  get roleTree(): Readonly<Record<string, RoleNode>> { return this.tree; }
-  get roles(): readonly string[] { return this.roleList; }
-  get allHttpRouteIds(): readonly string[] { return this.allRoutesList; }
+  get roleTree(): Readonly<Record<string, RoleNode>> {
+    return this.tree;
+  }
+  get roles(): readonly string[] {
+    return this.roleList;
+  }
+  get allHttpRouteIds(): readonly string[] {
+    return this.allRoutesList;
+  }
 
   private bumpVersion(): void {
     this.registryVersion++;
@@ -233,10 +213,9 @@ export class RoleRegistry {
     if (!meta) {
       meta = { bindingSources: new Set(), requiredRoles: new Set() };
       this.routeMeta.set(routeId, meta);
-      if (recordInAllRoutes) this.allRoutesList.push(routeId);
-    } else if (recordInAllRoutes && !this.allRoutesList.includes(routeId)) {
-      this.allRoutesList.push(routeId);
     }
+    if (recordInAllRoutes && !this.allRoutesList.includes(routeId))
+      this.allRoutesList.push(routeId);
     return meta;
   }
 
@@ -248,7 +227,8 @@ export class RoleRegistry {
       this.tree[roleId] = node;
       this.roleList.push(roleId);
     }
-    if (sourceModule && !node.sourceModules.includes(sourceModule)) node.sourceModules.push(sourceModule);
+    if (sourceModule && !node.sourceModules.includes(sourceModule))
+      node.sourceModules.push(sourceModule);
     return node;
   }
 
@@ -277,26 +257,23 @@ export class RoleRegistry {
     const norm = this.normalizeRouteId(routeId);
     if (entry.routes.has(norm) || entry.routes.has(routeId)) return true;
     for (const roleId of entry.roles) {
-      const expanded = this.expandRoleGrant(roleId);
-      if (expanded.apiIds.has(norm) || expanded.apiIds.has(routeId)) return true;
+      const { apiIds } = this.expandRoleGrant(roleId);
+      if (apiIds.has(norm) || apiIds.has(routeId)) return true;
     }
     return false;
   }
 
   getRouteSourceModule(routeId: string, groupId?: string): string {
-    const norm = this.normalizeRouteId(routeId);
-    const normGroup = groupId !== undefined ? this.normalizeRouteId(groupId) : undefined;
-    const meta = this.routeMeta.get(norm) ?? this.routeMeta.get(routeId);
-    const groupMeta =
-      normGroup !== undefined
-        ? (this.routeMeta.get(normGroup) ?? (groupId ? this.routeMeta.get(groupId) : undefined))
-        : undefined;
-    return (
-      meta?.owner ??
-      groupMeta?.owner ??
-      (meta && meta.bindingSources.size > 0 ? [...meta.bindingSources][0]! : undefined) ??
-      (groupMeta && groupMeta.bindingSources.size > 0 ? [...groupMeta.bindingSources][0]! : "unknown")
-    );
+    const ids = candidateIds(this, routeId, groupId);
+    for (const id of ids) {
+      const owner = this.routeMeta.get(id)?.owner;
+      if (owner) return owner;
+    }
+    for (const id of ids) {
+      const sources = this.routeMeta.get(id)?.bindingSources;
+      if (sources && sources.size > 0) return [...sources][0]!;
+    }
+    return "unknown";
   }
 
   getRoleSourceModules(roleId: string): readonly string[] {
@@ -311,7 +288,10 @@ export class RoleRegistry {
         this.refinerSources.get(`${roleId}@${refinerId}`);
       if (byRole !== undefined) return byRole;
     }
-    return this.refinerSources.get(`${norm}@${refinerId}`) ?? this.refinerSources.get(`${routeId}@${refinerId}`);
+    return (
+      this.refinerSources.get(`${norm}@${refinerId}`) ??
+      this.refinerSources.get(`${routeId}@${refinerId}`)
+    );
   }
 
   describeRouteAuthFailure(routeId: string, role: string, groupId?: string): RouteAuthDebugInfo {
@@ -319,7 +299,9 @@ export class RoleRegistry {
     const normGroup = groupId !== undefined ? this.normalizeRouteId(groupId) : undefined;
     const routeSourceModule = this.getRouteSourceModule(norm, normGroup);
     const roleSourceModules = this.getRoleSourceModules(role);
-    const meta = this.routeMeta.get(norm) ?? (normGroup !== undefined ? this.routeMeta.get(normGroup) : undefined);
+    const meta =
+      this.routeMeta.get(norm) ??
+      (normGroup !== undefined ? this.routeMeta.get(normGroup) : undefined);
     const bindingSourceModules = meta ? [...meta.bindingSources] : [];
     const requiredRoles = meta ? [...meta.requiredRoles] : [];
     const sourceModule =
@@ -354,7 +336,8 @@ export class RoleRegistry {
     const stripped = trimmed.startsWith("penguin.") ? trimmed.slice("penguin.".length) : trimmed;
     for (const [aliasFrom, canonicalTo] of Object.entries(this.prefixAliases)) {
       if (stripped === aliasFrom) return canonicalTo;
-      if (stripped.startsWith(`${aliasFrom}.`)) return `${canonicalTo}${stripped.slice(aliasFrom.length)}`;
+      if (stripped.startsWith(`${aliasFrom}.`))
+        return `${canonicalTo}${stripped.slice(aliasFrom.length)}`;
     }
     return stripped;
   }
@@ -388,7 +371,7 @@ export class RoleRegistry {
   }
 
   registerRole(roleId: string, contribution: RoleContribution, sourceModule?: string): void {
-    const rawTarget = (contribution.role ?? roleId).trim();
+    const rawTarget = (contribution.role ?? roleId.replace(/^role\./, "")).trim();
     assertNoWildcard(rawTarget, `registerRole("${rawTarget}")`);
     const targetRole = parseRefinedGrant(rawTarget).target;
     if (!targetRole) return;
@@ -399,14 +382,13 @@ export class RoleRegistry {
       if (!trimmed) continue;
       assertNoWildcard(trimmed, `registerRole("${targetRole}").children`);
       const parsed = parseRefinedGrant(trimmed);
-      if (parsed.refinerId !== null) this.recordStaticRefiner("roles", parsed.target, parsed.refinerId, sourceModule);
+      if (parsed.refinerId !== null)
+        this.recordStaticRefiner("roles", parsed.target, parsed.refinerId, sourceModule);
       if (!node.children.includes(trimmed)) node.children.push(trimmed);
     }
-
     for (const routeSpec of contribution.routes ?? []) {
       if (routeSpec.trim()) this.bindRouteToRole(targetRole, routeSpec.trim(), sourceModule, false);
     }
-
     if (contribution.flags?.allEndpoints) node.flags.allEndpoints = true;
     if (contribution.flags?.agentApi) node.flags.agentApi = true;
 
@@ -418,7 +400,8 @@ export class RoleRegistry {
       if (!parsed.target) continue;
       const parentNode = this.ensureRoleNode(parsed.target, sourceModule);
       const childRef = parsed.refinerId !== null ? `${targetRole}@${parsed.refinerId}` : targetRole;
-      if (parsed.refinerId !== null) this.recordStaticRefiner("roles", targetRole, parsed.refinerId, sourceModule);
+      if (parsed.refinerId !== null)
+        this.recordStaticRefiner("roles", targetRole, parsed.refinerId, sourceModule);
       if (!parentNode.children.includes(childRef)) parentNode.children.push(childRef);
     }
     this.bumpVersion();
@@ -427,14 +410,23 @@ export class RoleRegistry {
   registerRoles(
     input:
       | Readonly<Record<string, RoleContribution>>
-      | ReadonlyArray<{ readonly id: string; readonly from?: string; readonly data?: RoleContribution } & RoleContribution>,
+      | ReadonlyArray<
+          {
+            readonly id: string;
+            readonly from?: string;
+            readonly data?: RoleContribution;
+          } & RoleContribution
+        >,
     defaultSourceModule?: string,
   ): void {
     if (Array.isArray(input)) {
-      for (const item of input) this.registerRole(item.id, item.data ?? item, item.from ?? defaultSourceModule);
+      for (const item of input)
+        this.registerRole(item.id, item.data ?? item, item.from ?? defaultSourceModule);
       return;
     }
-    for (const [roleId, contrib] of Object.entries(input as Readonly<Record<string, RoleContribution>>)) {
+    for (const [roleId, contrib] of Object.entries(
+      input as Readonly<Record<string, RoleContribution>>,
+    )) {
       this.registerRole(roleId, contrib, defaultSourceModule);
     }
   }
@@ -445,8 +437,10 @@ export class RoleRegistry {
     assertNoWildcard(rawId, `registerRoute("${rawId}")`);
     const src = registration.sourceModule ?? sourceModule;
     const normId = this.normalizeRouteId(rawId);
-
-    const meta = this.ensureRouteMeta(normId, Boolean(registration.role || registration.roles?.length));
+    const meta = this.ensureRouteMeta(
+      normId,
+      Boolean(registration.role || registration.roles?.length),
+    );
     if (src) meta.owner = src;
 
     const roles = [
@@ -464,10 +458,7 @@ export class RoleRegistry {
     routes: ReadonlyArray<
       RouteRoleRegistration & {
         readonly from?: string;
-        readonly data?: {
-          readonly role?: string;
-          readonly roles?: readonly string[];
-        };
+        readonly data?: { readonly role?: string; readonly roles?: readonly string[] };
       }
     >,
     defaultSourceModule?: string,
@@ -486,7 +477,8 @@ export class RoleRegistry {
   }
 
   registerRoleBinding(contribution: RoleHttpBindingContribution, sourceModule?: string): void {
-    for (const [from, to] of Object.entries(contribution.aliases ?? {})) this.registerRouteAlias(from, to);
+    for (const [from, to] of Object.entries(contribution.aliases ?? {}))
+      this.registerRouteAlias(from, to);
     if (contribution.role && contribution.routes) {
       const roleSpec = contribution.role.trim();
       assertNoWildcard(roleSpec, "registerRoleBinding(role)");
@@ -494,7 +486,9 @@ export class RoleRegistry {
         if (r.trim()) this.bindRouteToRole(roleSpec, r.trim(), sourceModule, false);
       }
     }
-    for (const [roleSpec, routeList] of Object.entries(contribution.bindings ?? contribution.roles ?? {})) {
+    for (const [roleSpec, routeList] of Object.entries(
+      contribution.bindings ?? contribution.roles ?? {},
+    )) {
       const trimmedRole = roleSpec.trim();
       if (!trimmedRole) continue;
       assertNoWildcard(trimmedRole, `registerRoleBinding("${trimmedRole}")`);
@@ -507,16 +501,22 @@ export class RoleRegistry {
 
   registerRoleBindings(
     bindings: ReadonlyArray<
-      { readonly id?: string; readonly from?: string; readonly data?: RoleHttpBindingContribution } & RoleHttpBindingContribution
+      {
+        readonly id?: string;
+        readonly from?: string;
+        readonly data?: RoleHttpBindingContribution;
+      } & RoleHttpBindingContribution
     >,
     defaultSourceModule?: string,
   ): void {
-    for (const item of bindings) this.registerRoleBinding(item.data ?? item, item.from ?? defaultSourceModule);
+    for (const item of bindings)
+      this.registerRoleBinding(item.data ?? item, item.from ?? defaultSourceModule);
   }
 
   expandRoleGrant(role: string, extraGrants: readonly string[] = []): ExpandedRoleGrant {
     assertNoWildcard(role, `expandRoleGrant(role="${role}")`);
-    for (const extra of extraGrants) assertNoWildcard(extra, `expandRoleGrant(extraGrants="${extra}")`);
+    for (const extra of extraGrants)
+      assertNoWildcard(extra, `expandRoleGrant(extraGrants="${extra}")`);
     if (extraGrants.length === 0) {
       const cached = this.baseRoleCache.get(role);
       if (cached) return cached;
@@ -546,9 +546,14 @@ export class RoleRegistry {
       }
     };
 
-    const visitRole = (r: string, inheritedRefiner: string | null, isRootRefined: boolean): void => {
+    const visitRole = (
+      r: string,
+      inheritedRefiner: string | null,
+      isRootRefined: boolean,
+    ): void => {
       const isReadTier = r === "readonly" || r.endsWith(".read");
-      const eff = inheritedRefiner !== null && isReadTier && !isRootRefined ? null : inheritedRefiner;
+      const eff =
+        inheritedRefiner !== null && isReadTier && !isRootRefined ? null : inheritedRefiner;
       const key = `${r}@${eff ?? ""}`;
       if (visited.has(key)) return;
       visited.add(key);
@@ -603,32 +608,24 @@ export class RoleRegistry {
     return result;
   }
 
-  roleSpansAllEndpoints(role: string): boolean { return this.expandRoleGrant(role).allEndpoints; }
-  roleHasAgentApi(role: string): boolean { return this.expandRoleGrant(role).agentApi; }
+  roleHasAgentApi(role: string): boolean {
+    return this.expandRoleGrant(role).agentApi;
+  }
 }
 
 export const DEFAULT_ROLE_REGISTRY = new RoleRegistry();
 export const ROLE_TREE: Readonly<Record<string, RoleNode>> = DEFAULT_ROLE_REGISTRY.roleTree;
 export const AGENT_AUTH_ROLES: readonly string[] = DEFAULT_ROLE_REGISTRY.roles;
-export const BUILTIN_AGENT_AUTH_ROLES: readonly string[] = [...DEFAULT_ROLE_REGISTRY.roles];
 export const ALL_HTTP_ROUTE_IDS: readonly string[] = DEFAULT_ROLE_REGISTRY.allHttpRouteIds;
 
-export function normalizeRouteId(routeId: string): string {
-  return DEFAULT_ROLE_REGISTRY.normalizeRouteId(routeId);
-}
-export function isAgentAuthRole(value: string, registry: RoleRegistry = DEFAULT_ROLE_REGISTRY): value is AgentAuthRole {
-  return registry.isRole(value);
-}
-export function expandRoleGrant(
+export const normalizeRouteId = (routeId: string): string =>
+  DEFAULT_ROLE_REGISTRY.normalizeRouteId(routeId);
+export const expandRoleGrant = (
   role: string,
   extraGrants: readonly string[] = [],
   registry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
-): ExpandedRoleGrant {
-  return registry.expandRoleGrant(role, extraGrants);
-}
-export function roleSpansAllEndpoints(role: string, registry: RoleRegistry = DEFAULT_ROLE_REGISTRY): boolean {
-  return registry.roleSpansAllEndpoints(role);
-}
-export function roleHasAgentApi(role: string, registry: RoleRegistry = DEFAULT_ROLE_REGISTRY): boolean {
-  return registry.roleHasAgentApi(role);
-}
+): ExpandedRoleGrant => registry.expandRoleGrant(role, extraGrants);
+export const roleHasAgentApi = (
+  role: string,
+  registry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
+): boolean => registry.roleHasAgentApi(role);

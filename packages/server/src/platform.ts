@@ -76,11 +76,7 @@ import { AuthSessionsRepo } from "@prismshadow/penguin-library-auth/repos/auth-s
 import { AuthRoleSessionsRepo } from "./db/repos/auth-role-sessions.js";
 import { AgentAuthService, AgentAuthPermissionProvider } from "./auth/agent-auth-service.js";
 import { AuthSelfRefiner, AuthWithAskRefiner } from "./auth/auth-refiners.js";
-import {
-  AgentAuth,
-  AgentAuthPermissions,
-  AuthRoleSessions,
-} from "./mechanisms/agent-auth.js";
+import { AgentAuth, AgentAuthPermissions, AuthRoleSessions } from "./mechanisms/agent-auth.js";
 import { ServerSettingsRepo } from "@prismshadow/penguin-library-setting/repos/server-settings";
 import { UiPrefsRepo } from "@prismshadow/penguin-library-setting/repos/ui-prefs";
 import { UserDraftsRepo } from "@prismshadow/penguin-library-auth/repos/user-drafts";

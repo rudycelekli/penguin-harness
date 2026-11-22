@@ -32,57 +32,22 @@ import type { Workbenches } from "../mechanisms/workbenches.js";
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.agent.read", role: "agent.read", parents: ["readonly"] },
-      {
-        id: "role.agent.maintain",
-        role: "agent.maintain",
-        children: ["agent.read"],
-        parents: ["general@self"],
-      },
-      {
-        id: "role.agent.all",
-        role: "agent.all",
-        children: ["agent.maintain"],
-        parents: ["system-maintainer"],
-      },
-      { id: "role.memory.read", role: "memory.read", parents: ["readonly"] },
-      {
-        id: "role.memory.maintain",
-        role: "memory.maintain",
-        children: ["memory.read"],
-        parents: ["general@self"],
-      },
-      {
-        id: "role.memory.all",
-        role: "memory.all",
-        children: ["memory.maintain"],
-        parents: ["system-maintainer"],
-      },
-      { id: "role.skill.read", role: "skill.read", parents: ["readonly"] },
-      { id: "role.skill.maintain", role: "skill.maintain", children: ["skill.read"] },
-      {
-        id: "role.skill.all",
-        role: "skill.all",
-        children: ["skill.maintain"],
-        parents: ["system-maintainer"],
-      },
-      { id: "role.trace.read", role: "trace.read", parents: ["readonly"] },
-      { id: "role.trace.maintain", role: "trace.maintain", children: ["trace.read"] },
-      {
-        id: "role.trace.all",
-        role: "trace.all",
-        children: ["trace.maintain"],
-        parents: ["system-maintainer"],
-      },
-      { id: "role.benchmark.read", role: "benchmark.read", parents: ["readonly"] },
-      {
-        id: "role.benchmark.maintain",
-        role: "benchmark.maintain",
-        children: ["benchmark.read"],
-      },
+      { id: "role.agent.read", parents: ["readonly"] },
+      { id: "role.agent.maintain", children: ["agent.read"], parents: ["general@self"] },
+      { id: "role.agent.all", children: ["agent.maintain"], parents: ["system-maintainer"] },
+      { id: "role.memory.read", parents: ["readonly"] },
+      { id: "role.memory.maintain", children: ["memory.read"], parents: ["general@self"] },
+      { id: "role.memory.all", children: ["memory.maintain"], parents: ["system-maintainer"] },
+      { id: "role.skill.read", parents: ["readonly"] },
+      { id: "role.skill.maintain", children: ["skill.read"] },
+      { id: "role.skill.all", children: ["skill.maintain"], parents: ["system-maintainer"] },
+      { id: "role.trace.read", parents: ["readonly"] },
+      { id: "role.trace.maintain", children: ["trace.read"] },
+      { id: "role.trace.all", children: ["trace.maintain"], parents: ["system-maintainer"] },
+      { id: "role.benchmark.read", parents: ["readonly"] },
+      { id: "role.benchmark.maintain", children: ["benchmark.read"] },
       {
         id: "role.benchmark.all",
-        role: "benchmark.all",
         children: ["benchmark.maintain"],
         parents: ["system-maintainer"],
       },
@@ -444,11 +409,7 @@ export class AgentRoutes {
     this.memoryGetRoute = endpointOf(mGroup, "GET", "/");
     this.memoryTemplatePlaceholderRoute = endpointOf(mGroup, "POST", "/template-placeholder");
     this.memoryListFilesRoute = endpointOf(mGroup, "GET", "/scopes/:scopeKey/files");
-    this.memoryReadFileRoute = endpointOf(
-      mGroup,
-      "GET",
-      "/scopes/:scopeKey/files/:filePath{.+}",
-    );
+    this.memoryReadFileRoute = endpointOf(mGroup, "GET", "/scopes/:scopeKey/files/:filePath{.+}");
     this.memoryExportRoute = endpointOf(mGroup, "GET", "/scopes/:scopeKey/export");
     this.memoryImportRoute = endpointOf(mGroup, "POST", "/scopes/:scopeKey/import");
     this.memoryDeleteFileRoute = endpointOf(

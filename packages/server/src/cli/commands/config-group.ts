@@ -161,6 +161,24 @@ export function refuse(t: Messages, message: string): void {
   process.exitCode = 1;
 }
 
+export function refuseErr(t: Messages, err: unknown): void {
+  refuse(
+    t,
+    err instanceof ApiError && err.detail
+      ? err.detail
+      : err instanceof Error
+        ? err.message
+        : String(err),
+  );
+}
+
+export async function configClient(
+  opts: { server?: string; root?: string },
+  t: Messages,
+): Promise<ServerClient> {
+  return new ServerClient(await resolveConnection({ server: opts.server, root: opts.root }, t), t);
+}
+
 /**
  * `model add` without `--model-id`: sets or clears the group's connection
  * (`[providers.<group>]`), which the group's models without a value of their own follow. The
@@ -212,10 +230,7 @@ export async function addGroupConnection(
     refuse(t, t.providerInvalidBaseUrl(patch.base_url));
     return;
   }
-  const client = new ServerClient(
-    await resolveConnection({ server: opts.server, root: opts.root }, t),
-    t,
-  );
+  const client = await configClient(opts, t);
   const modelsPath = `/api/projects/${enc(opts.projectId)}/models`;
   const before = projectConfigFromModelsResponse(
     await client.request<ModelsResponse>("GET", modelsPath),
@@ -230,7 +245,12 @@ export async function addGroupConnection(
   }
   if (
     patch.client_type !== undefined &&
-    fixedClientTypeRefuses(group, "group", patch.client_type, before.providers?.[group]?.client_type)
+    fixedClientTypeRefuses(
+      group,
+      "group",
+      patch.client_type,
+      before.providers?.[group]?.client_type,
+    )
   ) {
     refuse(t, t.protocolFixed(providerInfo(group)?.label ?? group, fixedClientType(group)!));
     return;
@@ -253,13 +273,7 @@ export async function addGroupConnection(
     );
     cfg = projectConfigFromModelsResponse(res);
   } catch (err) {
-    const msg =
-      err instanceof ApiError && err.detail
-        ? err.detail
-        : err instanceof Error
-          ? err.message
-          : String(err);
-    refuse(t, msg);
+    refuseErr(t, err);
     return;
   }
   const groupBaseUrl = cfg.providers?.[group]?.base_url;
@@ -288,10 +302,7 @@ export async function removeGroupConnection(
   t: Messages,
 ): Promise<void> {
   const group = String(opts.provider).trim();
-  const client = new ServerClient(
-    await resolveConnection({ server: opts.server, root: opts.root }, t),
-    t,
-  );
+  const client = await configClient(opts, t);
   const modelsPath = `/api/projects/${enc(opts.projectId)}/models`;
   const before = projectConfigFromModelsResponse(
     await client.request<ModelsResponse>("GET", modelsPath),

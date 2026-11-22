@@ -60,11 +60,11 @@ import type { CliCommandCode, CliCommandProgram } from "@prismshadow/penguin-cor
 import { DEFAULT_AGENT_ID, DEFAULT_PROJECT_ID } from "@prismshadow/penguin-core";
 import type { VaultResponse } from "../../api/types.js";
 import { parseApprovalAnswer } from "../approval.js";
-import { ApiError, ServerClient } from "../client.js";
-import { resolveConnection } from "../connection.js";
+import { ApiError } from "../client.js";
 import { terminalInput } from "../console-input.js";
 import { getMessages, maskApiKey, type Messages } from "../i18n.js";
 import { applyLanguageToRc, restartShell } from "../lang-config.js";
+import { configClient, refuseErr } from "./config-group.js";
 import { registerConfigModelCommand } from "./config-model.js";
 
 /** The node the host located for a key, typed with this package's commander. */
@@ -86,25 +86,14 @@ export function registerConfigCommand(config: Command, t: Messages): void {
     .option("--root <dir>", t.common.root)
     .action(async (opts) => {
       try {
-        const client = new ServerClient(
-          await resolveConnection({ server: opts.server, root: opts.root }, t),
-          t,
-        );
+        const client = await configClient(opts, t);
         await client.request(
           "PUT",
           `/api/projects/${encodeURIComponent(opts.projectId)}/agents/${encodeURIComponent(opts.agentId)}/vault/entries/${encodeURIComponent(opts.key)}`,
           { value: opts.value },
         );
       } catch (err) {
-        // Validation errors such as an invalid key name: print an explanation and exit with a non-zero code, without throwing a stack trace.
-        const msg =
-          err instanceof ApiError && err.detail
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        process.stderr.write(`${t.error(msg)}\n`);
-        process.exitCode = 1;
+        refuseErr(t, err);
         return;
       }
       process.stdout.write(`${t.vaultSet(opts.key)}\n`);
@@ -118,10 +107,7 @@ export function registerConfigCommand(config: Command, t: Messages): void {
     .option("--server <url>", t.common.server)
     .option("--root <dir>", t.common.root)
     .action(async (opts) => {
-      const client = new ServerClient(
-        await resolveConnection({ server: opts.server, root: opts.root }, t),
-        t,
-      );
+      const client = await configClient(opts, t);
       const res = await client.request<VaultResponse>(
         "GET",
         `/api/projects/${encodeURIComponent(opts.projectId)}/agents/${encodeURIComponent(opts.agentId)}/vault`,
@@ -151,10 +137,7 @@ export function registerConfigCommand(config: Command, t: Messages): void {
     .option("--root <dir>", t.common.root)
     .action(async (opts) => {
       try {
-        const client = new ServerClient(
-          await resolveConnection({ server: opts.server, root: opts.root }, t),
-          t,
-        );
+        const client = await configClient(opts, t);
         await client.request(
           "DELETE",
           `/api/projects/${encodeURIComponent(opts.projectId)}/agents/${encodeURIComponent(opts.agentId)}/vault/entries/${encodeURIComponent(opts.key)}`,
@@ -165,14 +148,7 @@ export function registerConfigCommand(config: Command, t: Messages): void {
           process.exitCode = 1;
           return;
         }
-        const msg =
-          err instanceof ApiError && err.detail
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : String(err);
-        process.stderr.write(`${t.error(msg)}\n`);
-        process.exitCode = 1;
+        refuseErr(t, err);
         return;
       }
       process.stdout.write(`${t.vaultRemoved(opts.key)}\n`);

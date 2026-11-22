@@ -374,14 +374,9 @@ export function agentMcpServersRoutes(deps: PluginsRouteDeps): Hono<AppEnv> {
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.plugin.read", role: "plugin.read", parents: ["readonly"] },
-      { id: "role.plugin.maintain", role: "plugin.maintain", children: ["plugin.read"] },
-      {
-        id: "role.plugin.all",
-        role: "plugin.all",
-        children: ["plugin.maintain"],
-        parents: ["system-maintainer"],
-      },
+      { id: "role.plugin.read", parents: ["readonly"] },
+      { id: "role.plugin.maintain", children: ["plugin.read"] },
+      { id: "role.plugin.all", children: ["plugin.maintain"], parents: ["system-maintainer"] },
     ],
     "HttpModule.routes": [
       {
