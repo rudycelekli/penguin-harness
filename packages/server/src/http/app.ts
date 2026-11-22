@@ -155,11 +155,7 @@ async function checkRouteAuth(
   }
 
   const upgradeRequestEndpoint = `/api/projects/${agentAuth.projectId}/agents/${agentAuth.agentId}/auth/requests`;
-  const hasMismatch =
-    grant.mismatches !== undefined &&
-    (grant.mismatches.unknownPrimaryRole !== undefined ||
-      grant.mismatches.unknownRoles.length > 0 ||
-      grant.mismatches.unknownRoutes.length > 0);
+  const hasMismatch = Boolean(grant.mismatches?.hasMismatch);
 
   const isSelfAuthIntrospection =
     (normalized === "agent.auth.get" || normalized === "agent.auth.requestUpgrade") &&
