@@ -884,15 +884,16 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
       "p1",
       "a1",
       "removed-plugin-role",
-      ["unknown.domain", "unknown.route"],
+      ["unknown.maintain", "unknown.route"],
       new Date(),
     );
     const mismatchGrant = agentAuth.currentGrant("p1", "a1")!;
     expect(mismatchGrant.role).toBe("readonly");
     expect(mismatchGrant.mismatches).toEqual({
-      unknownPrimaryRole: "removed-plugin-role",
+      hasMismatch: true,
+      unknownPrimaryRole: true,
       fallbackRole: "readonly",
-      unknownRoles: ["unknown.domain"],
+      unknownRoles: ["removed-plugin-role", "unknown.maintain"],
       unknownRoutes: ["unknown.route"],
     });
     // Readonly routes still work under fallback
