@@ -766,4 +766,165 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
     expect(orgFailure.routeSourceModule).toBe("OrgRoutes");
     expect(orgFailure.bindingSourceModules).toContain("OrgRoutes");
   });
+
+  it("supports AgentRole aggregation, general-with-ask workflow, suggestedWithAsk failure hints, and role mismatch fallback", async () => {
+    const { auth: agentAuth } = service();
+    const askLog: string[] = [];
+    const { req } = httpWithRoutes(agentAuth, [
+      new AuthWithAskRefiner((_ctx, action) => {
+        askLog.push(`${action.routeId}:${action.params.agentId ?? "-"}`);
+        return "allowed_once";
+      }),
+    ]);
+
+    // 1. Default workflow `general-with-ask`: @self passes without prompting, cross-agent & vault fall back to @withAsk
+    const { token } = agentAuth.issueSession("p1", "a1", new Date(), "general-with-ask");
+    expect((await req("PUT", "/api/projects/p1/agents/a1/config", token)).status).toBe(200);
+    expect(askLog).toEqual([]);
+
+    expect((await req("PUT", "/api/projects/p1/agents/a2/config", token)).status).toBe(200);
+    expect(askLog).toEqual(["agent.config.update:a2"]);
+
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
+    expect(askLog).toEqual(["agent.config.update:a2", "vault.update:a1"]);
+
+    // 2. User-defined AgentRole inheriting from the role tree + withAsk refiners
+    agentAuth.defineAgentRole({
+      id: "custom-operator",
+      inherits: ["agent.read", "session.maintain"],
+      withAsk: ["vault.maintain"],
+      description: "Custom operator workflow",
+    });
+    agentAuth.updateGrant("p1", "a1", "custom-operator", [], new Date());
+    const customGrant = agentAuth.currentGrant("p1", "a1")!;
+    expect(customGrant.inheritedRoles).toContain("agent.read");
+    expect(customGrant.inheritedRoles).toContain("session.maintain");
+    expect(customGrant.refinedRoutes?.get("vault.update")).toEqual(["withAsk"]);
+
+    // 3. Clear rejection reason with suggestedWithAsk and upgradeRequestEndpoint
+    const modelDenied = await req("PUT", "/api/projects/p1/models", token);
+    expect(modelDenied.status).toBe(403);
+    const modelErr = (await modelDenied.json()) as {
+      error: { details?: Record<string, string> };
+    };
+    expect(modelErr.error.details?.reason).toBe("role_missing_route_grant");
+    expect(modelErr.error.details?.suggestedWithAsk).toContain("model.maintain@withAsk");
+    expect(modelErr.error.details?.suggestedUpgradeGrants).toContain("model.maintain");
+    expect(modelErr.error.details?.upgradeRequestEndpoint).toBe(
+      "/api/projects/p1/agents/a1/auth/requests",
+    );
+
+    // Switch to @withAsk using updateGrant options
+    agentAuth.updateGrant("p1", "a1", "custom-operator", [], new Date(), {
+      withAsk: ["model.maintain"],
+    });
+    expect((await req("PUT", "/api/projects/p1/models", token)).status).toBe(200);
+
+    // 4. Role mismatch detection and safe fallback to readonly on unknown primary role
+    agentAuth.updateGrant(
+      "p1",
+      "a1",
+      "removed-plugin-role",
+      ["unknown.domain", "unknown.route"],
+      new Date(),
+    );
+    const mismatchGrant = agentAuth.currentGrant("p1", "a1")!;
+    expect(mismatchGrant.role).toBe("readonly");
+    expect(mismatchGrant.mismatches).toEqual({
+      unknownPrimaryRole: "removed-plugin-role",
+      fallbackRole: "readonly",
+      unknownRoles: ["unknown.domain"],
+      unknownRoutes: ["unknown.route"],
+    });
+    // Readonly routes still work under fallback
+    expect((await req("GET", "/api/projects/p1/agents/a1/config", token)).status).toBe(200);
+    // Write routes fail and surface roleMismatch details
+    const writeUnderFallback = await req("PUT", "/api/projects/p1/agents/a1/config", token);
+    expect(writeUnderFallback.status).toBe(403);
+    const fallbackErr = (await writeUnderFallback.json()) as {
+      error: { details?: Record<string, string> };
+    };
+    expect(fallbackErr.error.details?.roleMismatch).toContain("removed-plugin-role");
+  });
+
+  it("supports Permission Upgrade Requests with 3 approval modes: allowed_once, allowed_for_agent, and always_allowed", async () => {
+    const { auth: agentAuth } = service();
+    let askMode: "allowed_once" | "allowed_for_agent" | "always_allowed" | "deny" = "deny";
+    let askCount = 0;
+    const { req } = httpWithRoutes(agentAuth, [
+      new AuthWithAskRefiner(() => {
+        askCount++;
+        return askMode;
+      }),
+    ]);
+
+    const { token } = agentAuth.issueSession("p1", "a1", new Date(), "general");
+
+    // Initially vault.update is denied for role=general
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(403);
+
+    // Mode 1: Agent requests upgrade -> decided as "allowed_once"
+    const req1 = agentAuth.requestUpgrade({
+      projectId: "p1",
+      agentId: "a1",
+      grants: ["vault.maintain"],
+      reason: "Need to rotate one secret",
+      routeId: "vault.update",
+    });
+    expect(req1.status).toBe("pending");
+    agentAuth.decideUpgradeRequest({
+      projectId: "p1",
+      agentId: "a1",
+      requestId: req1.requestId,
+      decision: "allowed_once",
+    });
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").onceGrants).toHaveLength(1);
+
+    // First call succeeds and consumes the once-grant
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").onceGrants).toHaveLength(0);
+    // Second call is denied again
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(403);
+
+    // Mode 2: Interactive @withAsk returns "allowed_for_agent" (allowed when use this agent)
+    agentAuth.updateGrant("p1", "a1", "general", ["vault.maintain@withAsk"], new Date());
+    const genBeforeSessionGrant = agentAuth.generationOf("p1", "a1")!.generation;
+    askMode = "allowed_for_agent";
+    askCount = 0;
+
+    // First call triggers @withAsk (askCount = 1) and records agent-session grant
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
+    expect(askCount).toBe(1);
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").agentSessionGrants).toContain("vault.update");
+    // Persisted DB generation was not rewritten
+    expect(agentAuth.generationOf("p1", "a1")!.generation).toBe(genBeforeSessionGrant);
+
+    // Subsequent calls in the same agent session succeed without re-asking!
+    askMode = "deny";
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
+    expect(askCount).toBe(1);
+
+    // Downgrading / updating the agent's role clears temporary session grants
+    agentAuth.updateGrant("p1", "a1", "general", [], new Date());
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").agentSessionGrants).toEqual([]);
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(403);
+
+    // Mode 3: Agent requests upgrade -> decided as "always_allowed" (writes to persistent role grant)
+    const req3 = agentAuth.requestUpgrade({
+      projectId: "p1",
+      agentId: "a1",
+      grants: ["vault.maintain"],
+      reason: "Permanent secret manager agent",
+    });
+    agentAuth.decideUpgradeRequest({
+      projectId: "p1",
+      agentId: "a1",
+      requestId: req3.requestId,
+      decision: "always_allowed",
+    });
+    const persisted = agentAuth.generationOf("p1", "a1")!;
+    expect(persisted.apiIds).toContain("vault.maintain");
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
+  });
 });

@@ -121,6 +121,7 @@ async function checkRouteAuth(
   refinerRegistry: AuthRefinerRegistry,
   roleRegistry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
   log?: { line(msg: string): void },
+  agentAuthService?: AgentAuth,
 ): Promise<void> {
   const agentAuth = (c.var as AppEnv["Variables"]).agentAuth;
   if (agentAuth === undefined) return;
@@ -128,36 +129,6 @@ async function checkRouteAuth(
   const normalized = roleRegistry.normalizeRouteId(routeId);
   const normalizedGroup =
     groupId !== undefined ? roleRegistry.normalizeRouteId(groupId) : undefined;
-  if (
-    !grant.allEndpoints &&
-    !matchesRouteGrant(grant.apiIds, normalized, normalizedGroup, roleRegistry)
-  ) {
-    const info = roleRegistry.describeRouteAuthFailure(normalized, grant.role, normalizedGroup);
-    log?.line(
-      `[agent-auth] auth fail: code=permission_required reason=role_missing_route_grant route=${normalized} role=${grant.role} agent=${agentAuth.projectId}/${agentAuth.agentId} sourceModule=${info.sourceModule} routeSource=${info.routeSourceModule} roleSource=${info.roleSourceModules.join(",") || "none"} bindingSource=${info.bindingSourceModules.join(",") || "none"}`,
-    );
-    throw new HttpError(
-      403,
-      "permission_required",
-      `Agent role "${grant.role}" does not grant "${normalized}" (sourceModule: ${info.sourceModule}).`,
-      undefined,
-      {
-        sourceModule: info.sourceModule,
-        routeSourceModule: info.routeSourceModule,
-        ...(info.roleSourceModules.length > 0
-          ? { roleSourceModule: info.roleSourceModules.join(",") }
-          : {}),
-        ...(info.bindingSourceModules.length > 0
-          ? { bindingSourceModule: info.bindingSourceModules.join(",") }
-          : {}),
-        ...(info.requiredRoles.length > 0 ? { requiredRoles: info.requiredRoles.join(",") } : {}),
-        routeId: normalized,
-        ...(normalizedGroup !== undefined ? { groupId: normalizedGroup } : {}),
-        role: grant.role,
-        reason: "role_missing_route_grant",
-      },
-    );
-  }
   const routeProjectId = c.req.param("projectId");
   if (
     !grant.allEndpoints &&
@@ -183,40 +154,157 @@ async function checkRouteAuth(
     );
   }
 
-  const refinerIds = resolveRouteRefiners(grant.apiIds, normalized, normalizedGroup, roleRegistry);
-  if (!grant.allEndpoints && refinerIds !== undefined && refinerIds.length > 0) {
-    const evalResult = await refinerRegistry.evaluate(
-      refinerIds,
-      {
-        projectId: agentAuth.projectId,
-        agentId: agentAuth.agentId,
-        role: grant.role,
-        generation: grant.generation,
-      },
-      {
-        routeId: normalized,
-        ...(normalizedGroup !== undefined ? { groupId: normalizedGroup } : {}),
-        method: c.req.method.toUpperCase(),
-        path: c.req.path,
-        params: (c.req.param() ?? {}) as Record<string, string>,
-      },
-      c.req.raw,
-    );
-    if (!evalResult.ok) {
+  const upgradeRequestEndpoint = `/api/projects/${agentAuth.projectId}/agents/${agentAuth.agentId}/auth/requests`;
+  const hasMismatch =
+    grant.mismatches !== undefined &&
+    (grant.mismatches.unknownPrimaryRole !== undefined ||
+      grant.mismatches.unknownRoles.length > 0 ||
+      grant.mismatches.unknownRoutes.length > 0);
+
+  let consumedOnce = false;
+  if (
+    !grant.allEndpoints &&
+    !matchesRouteGrant(grant.apiIds, normalized, normalizedGroup, roleRegistry)
+  ) {
+    if (
+      agentAuthService?.consumeOnceGrant?.(
+        agentAuth.projectId,
+        agentAuth.agentId,
+        normalized,
+        normalizedGroup,
+      )
+    ) {
+      consumedOnce = true;
+    } else {
+      const info = roleRegistry.describeRouteAuthFailure(normalized, grant.role, normalizedGroup);
       log?.line(
-        `[agent-auth] auth fail: code=${evalResult.code} reason=${evalResult.reason} route=${normalized} role=${grant.role} agent=${agentAuth.projectId}/${agentAuth.agentId} refiner=@${evalResult.refinerId} sourceModule=${evalResult.sourceModule} routeSource=${evalResult.routeSourceModule}`,
+        `[agent-auth] auth fail: code=permission_required reason=role_missing_route_grant route=${normalized} role=${grant.role} agent=${agentAuth.projectId}/${agentAuth.agentId} sourceModule=${info.sourceModule} routeSource=${info.routeSourceModule} roleSource=${info.roleSourceModules.join(",") || "none"} bindingSource=${info.bindingSourceModules.join(",") || "none"}`,
       );
-      throw new HttpError(403, evalResult.code, evalResult.message, undefined, {
-        sourceModule: evalResult.sourceModule,
-        routeSourceModule: evalResult.routeSourceModule,
-        ...(evalResult.refinerSourceModule !== undefined
-          ? { refinerSourceModule: evalResult.refinerSourceModule }
-          : {}),
-        refinerId: evalResult.refinerId,
-        routeId: normalized,
-        role: grant.role,
-        reason: evalResult.reason,
-      });
+      throw new HttpError(
+        403,
+        "permission_required",
+        `Agent role "${grant.role}" does not grant "${normalized}" (sourceModule: ${info.sourceModule}).`,
+        undefined,
+        {
+          sourceModule: info.sourceModule,
+          routeSourceModule: info.routeSourceModule,
+          ...(info.roleSourceModules.length > 0
+            ? { roleSourceModule: info.roleSourceModules.join(",") }
+            : {}),
+          ...(info.bindingSourceModules.length > 0
+            ? { bindingSourceModule: info.bindingSourceModules.join(",") }
+            : {}),
+          ...(info.requiredRoles.length > 0 ? { requiredRoles: info.requiredRoles.join(",") } : {}),
+          ...(info.suggestedWithAsk.length > 0
+            ? { suggestedWithAsk: info.suggestedWithAsk.join(",") }
+            : {}),
+          ...(info.suggestedUpgradeGrants.length > 0
+            ? { suggestedUpgradeGrants: info.suggestedUpgradeGrants.join(",") }
+            : {}),
+          upgradeRequestEndpoint,
+          ...(hasMismatch ? { roleMismatch: JSON.stringify(grant.mismatches) } : {}),
+          routeId: normalized,
+          ...(normalizedGroup !== undefined ? { groupId: normalizedGroup } : {}),
+          role: grant.role,
+          reason: "role_missing_route_grant",
+        },
+      );
+    }
+  }
+
+  const refinerIds = resolveRouteRefiners(grant.apiIds, normalized, normalizedGroup, roleRegistry);
+  if (!grant.allEndpoints && !consumedOnce && refinerIds !== undefined && refinerIds.length > 0) {
+    const authCtx = {
+      projectId: agentAuth.projectId,
+      agentId: agentAuth.agentId,
+      role: grant.role,
+      generation: grant.generation,
+    };
+    const authAction = {
+      routeId: normalized,
+      ...(normalizedGroup !== undefined ? { groupId: normalizedGroup } : {}),
+      method: c.req.method.toUpperCase(),
+      path: c.req.path,
+      params: (c.req.param() ?? {}) as Record<string, string>,
+    };
+    const nonInteractive = refinerIds.filter((id) => id !== "withAsk");
+    let passedNonInteractive = false;
+    if (nonInteractive.length > 0 && nonInteractive.length < refinerIds.length) {
+      const preEval = await refinerRegistry.evaluate(
+        nonInteractive,
+        authCtx,
+        authAction,
+        c.req.raw,
+      );
+      if (preEval.ok) passedNonInteractive = true;
+    }
+    if (!passedNonInteractive) {
+      if (
+        refinerIds.includes("withAsk") &&
+        agentAuthService?.consumeOnceGrant?.(
+          agentAuth.projectId,
+          agentAuth.agentId,
+          normalized,
+          normalizedGroup,
+        )
+      ) {
+        passedNonInteractive = true;
+      }
+    }
+    if (!passedNonInteractive) {
+      const targetRefiners =
+        nonInteractive.length > 0 && nonInteractive.length < refinerIds.length
+          ? ["withAsk"]
+          : refinerIds;
+      const evalResult = await refinerRegistry.evaluate(
+        targetRefiners,
+        authCtx,
+        authAction,
+        c.req.raw,
+      );
+      if (!evalResult.ok) {
+        if (
+          evalResult.reason === "refiner_denied" &&
+          agentAuthService?.consumeOnceGrant?.(
+            agentAuth.projectId,
+            agentAuth.agentId,
+            normalized,
+            normalizedGroup,
+          )
+        ) {
+          // Allowed once via approved upgrade request.
+        } else {
+          const info = roleRegistry.describeRouteAuthFailure(
+            normalized,
+            grant.role,
+            normalizedGroup,
+          );
+          log?.line(
+            `[agent-auth] auth fail: code=${evalResult.code} reason=${evalResult.reason} route=${normalized} role=${grant.role} agent=${agentAuth.projectId}/${agentAuth.agentId} refiner=@${evalResult.refinerId} sourceModule=${evalResult.sourceModule} routeSource=${evalResult.routeSourceModule}`,
+          );
+          throw new HttpError(403, evalResult.code, evalResult.message, undefined, {
+            sourceModule: evalResult.sourceModule,
+            routeSourceModule: evalResult.routeSourceModule,
+            ...(evalResult.refinerSourceModule !== undefined
+              ? { refinerSourceModule: evalResult.refinerSourceModule }
+              : {}),
+            ...(info.requiredRoles.length > 0
+              ? { requiredRoles: info.requiredRoles.join(",") }
+              : {}),
+            ...(info.suggestedWithAsk.length > 0
+              ? { suggestedWithAsk: info.suggestedWithAsk.join(",") }
+              : {}),
+            ...(info.suggestedUpgradeGrants.length > 0
+              ? { suggestedUpgradeGrants: info.suggestedUpgradeGrants.join(",") }
+              : {}),
+            upgradeRequestEndpoint,
+            refinerId: evalResult.refinerId,
+            routeId: normalized,
+            role: grant.role,
+            reason: evalResult.reason,
+          });
+        }
+      }
     }
   }
 
@@ -234,6 +322,7 @@ function withRouteAuth(
   refinerRegistry: AuthRefinerRegistry,
   roleRegistry: RoleRegistry = DEFAULT_ROLE_REGISTRY,
   log?: { line(msg: string): void },
+  agentAuthService?: AgentAuth,
 ): Hono<AppEnv> {
   const normalizedGroup = roleRegistry.normalizeRouteId(groupId);
   if (normalizedGroup === "session.forward") return source;
@@ -261,6 +350,7 @@ function withRouteAuth(
           refinerRegistry,
           roleRegistry,
           log,
+          agentAuthService,
         );
         await next();
       },
@@ -352,6 +442,18 @@ export class HttpModule {
       contributions.authRefiners ?? [],
       roleRegistry,
     );
+    if (this.agentAuth !== undefined) {
+      refinerRegistry.bindUpgradeDecisionHandler((decision, ctx, action) => {
+        if (decision === "allowed_for_agent" || decision === "always_allowed") {
+          this.agentAuth.applyUpgradeDecision?.(
+            ctx.projectId,
+            ctx.agentId,
+            [action.routeId],
+            decision,
+          );
+        }
+      });
+    }
 
     const agentAuthHook =
       this.agentAuth !== undefined
@@ -496,7 +598,15 @@ export class HttpModule {
       if (r.method !== undefined) {
         if (r.auth === "user") {
           app.on(r.method, r.prefix, once, async (c, next) => {
-            await checkRouteAuth(c, r.id, undefined, refinerRegistry, roleRegistry, this.log);
+            await checkRouteAuth(
+              c,
+              r.id,
+              undefined,
+              refinerRegistry,
+              roleRegistry,
+              this.log,
+              this.agentAuth,
+            );
             await next();
           });
         }
@@ -504,7 +614,10 @@ export class HttpModule {
         app.route(r.prefix, r.app);
       } else {
         if (r.auth === "user") {
-          app.route(r.prefix, withRouteAuth(r.app, r.id, refinerRegistry, roleRegistry, this.log));
+          app.route(
+            r.prefix,
+            withRouteAuth(r.app, r.id, refinerRegistry, roleRegistry, this.log, this.agentAuth),
+          );
         } else {
           app.route(r.prefix, r.app);
         }

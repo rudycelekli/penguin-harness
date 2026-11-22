@@ -8,7 +8,10 @@ import type {
   AgentAuth,
   AgentAuthGrant,
   AgentAuthPermissions,
+  AgentPermissionUpgradeRequest,
+  AgentTemporaryGrantsSummary,
   AuthRoleSessions,
+  UpdateAgentGrantOptions,
 } from "../mechanisms/agent-auth.js";
 import {
   authRoleSessionTokenHash,
@@ -18,14 +21,23 @@ import {
   DEFAULT_AGENT_AUTH_ROLE,
   RoleRegistry,
   assertNoWildcard,
+  expandRoleGrant,
   matchesRouteGrant,
+  parseRefinedGrant,
   roleHasAgentApi,
   type AgentAuthRole,
+  type AgentRoleDefinition,
   type RoleContribution,
   type RoleHttpBindingContribution,
+  type RoleNode,
   type RouteAuthDebugInfo,
   type RouteRoleRegistration,
 } from "./agent-roles.js";
+import {
+  normalizeUpgradeDecision,
+  type PermissionUpgradeDecision,
+  type WithAskDecisionInput,
+} from "./auth-refiners.js";
 
 export const AGENT_SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
 
@@ -36,11 +48,31 @@ export interface AgentAuthContext {
   agentApi: boolean;
 }
 
+interface OnceGrantEntry {
+  grants: readonly string[];
+  remainingUses: number;
+  requestId?: string;
+  createdAt: string;
+}
+
 @Component()
 export class AgentAuthService implements AgentAuth {
   @Use() private readonly authRoleSessions!: AuthRoleSessions;
   @Use() private readonly agentAuthPermissions!: AgentAuthPermissions;
   private readonly activeTokens = new Map<string, string>();
+  private readonly onceGrants = new Map<string, OnceGrantEntry[]>();
+  private readonly agentSessionGrants = new Map<string, Set<string>>();
+  private readonly upgradeRequests = new Map<string, AgentPermissionUpgradeRequest[]>();
+  private requestSeq = 0;
+
+  private agentKey(projectId: string, agentId: string): string {
+    return `${projectId}\0${agentId}`;
+  }
+
+  private sessionExtrasFor(projectId: string, agentId: string): readonly string[] {
+    const set = this.agentSessionGrants.get(this.agentKey(projectId, agentId));
+    return set && set.size > 0 ? [...set] : [];
+  }
 
   issueSession(
     projectId: string,
@@ -56,13 +88,13 @@ export class AgentAuthService implements AgentAuth {
       now,
       ttlMs: AGENT_SESSION_TTL_MS,
     });
-    this.activeTokens.set(`${projectId}\0${agentId}`, out.token);
+    this.activeTokens.set(this.agentKey(projectId, agentId), out.token);
     const current = this.authRoleSessions.generationOf(projectId, agentId);
     return { ...out, role: current?.role ?? DEFAULT_AGENT_AUTH_ROLE };
   }
 
   ensureSessionToken(projectId: string, agentId: string, now: Date): string {
-    const cached = this.activeTokens.get(`${projectId}\0${agentId}`);
+    const cached = this.activeTokens.get(this.agentKey(projectId, agentId));
     if (cached !== undefined && this.authenticate(cached, now) !== null) return cached;
     return this.issueSession(projectId, agentId, now).token;
   }
@@ -73,22 +105,51 @@ export class AgentAuthService implements AgentAuth {
     role: AgentAuthRole,
     apiIds: readonly string[],
     now: Date,
+    options?: UpdateAgentGrantOptions,
   ): { generation: number; role: AgentAuthRole; apiIds: readonly string[]; token: string } {
     assertNoWildcard(role, "updateGrant(role)");
-    for (const apiId of apiIds) assertNoWildcard(apiId, "updateGrant(apiIds)");
+    const merged: string[] = [];
+    for (const item of options?.inherits ?? []) {
+      const t = item.trim();
+      if (!t) continue;
+      assertNoWildcard(t, "updateGrant(inherits)");
+      if (!merged.includes(t)) merged.push(t);
+    }
+    for (const item of options?.withAsk ?? []) {
+      const t = item.trim();
+      if (!t) continue;
+      assertNoWildcard(t, "updateGrant(withAsk)");
+      const spec = t.includes("@") ? t : `${t}@withAsk`;
+      if (!merged.includes(spec)) merged.push(spec);
+    }
+    for (const apiId of apiIds) {
+      const t = apiId.trim();
+      if (!t) continue;
+      assertNoWildcard(t, "updateGrant(apiIds)");
+      if (!merged.includes(t)) merged.push(t);
+    }
+    if (options?.clearTemporaryGrants !== false) {
+      const key = this.agentKey(projectId, agentId);
+      this.onceGrants.delete(key);
+      this.agentSessionGrants.delete(key);
+    }
     const current = this.authRoleSessions.generationOf(projectId, agentId);
     const nextGen = (current?.generation ?? 0) + 1;
-    this.authRoleSessions.bumpGeneration(projectId, agentId, role, apiIds, nextGen);
+    this.authRoleSessions.bumpGeneration(projectId, agentId, role, merged, nextGen);
     const token = this.ensureSessionToken(projectId, agentId, now);
-    return { generation: nextGen, role, apiIds: [...apiIds], token };
+    return { generation: nextGen, role, apiIds: merged, token };
   }
 
   currentGrant(projectId: string, agentId: string): AgentAuthGrant | null {
-    return this.agentAuthPermissions.grantOf(projectId, agentId);
+    return this.agentAuthPermissions.grantOf(
+      projectId,
+      agentId,
+      this.sessionExtrasFor(projectId, agentId),
+    );
   }
 
   allowsEndpoint(projectId: string, agentId: string, apiId: string): boolean {
-    const grant = this.agentAuthPermissions.grantOf(projectId, agentId);
+    const grant = this.currentGrant(projectId, agentId);
     return (
       grant !== null && (grant.allEndpoints === true || matchesRouteGrant(grant.apiIds, apiId))
     );
@@ -96,6 +157,22 @@ export class AgentAuthService implements AgentAuth {
 
   registerRole(roleId: string, contribution: RoleContribution, sourceModule?: string): void {
     this.agentAuthPermissions.registerRole(roleId, contribution, sourceModule);
+  }
+
+  defineAgentRole(def: AgentRoleDefinition, sourceModule?: string): AgentRoleDefinition {
+    return this.agentAuthPermissions.defineAgentRole(def, sourceModule);
+  }
+
+  listAgentRoles(): readonly AgentRoleDefinition[] {
+    return this.agentAuthPermissions.listAgentRoles();
+  }
+
+  roleTreeSnapshot(): {
+    readonly agentRoles: readonly AgentRoleDefinition[];
+    readonly roleTree: Readonly<Record<string, RoleNode>>;
+    readonly allHttpRouteIds: readonly string[];
+  } {
+    return this.agentAuthPermissions.roleTreeSnapshot();
   }
 
   registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void {
@@ -114,12 +191,168 @@ export class AgentAuthService implements AgentAuth {
     return this.authRoleSessions.generationOf(projectId, agentId);
   }
 
+  requestUpgrade(opts: {
+    projectId: string;
+    agentId: string;
+    grants: readonly string[];
+    reason?: string;
+    routeId?: string;
+    now?: Date;
+  }): AgentPermissionUpgradeRequest {
+    const cleanGrants = opts.grants.map((g) => g.trim()).filter(Boolean);
+    if (cleanGrants.length === 0) {
+      throw new Error("Permission upgrade request requires at least one role or route grant.");
+    }
+    for (const g of cleanGrants) assertNoWildcard(g, "requestUpgrade(grants)");
+    const now = opts.now ?? new Date();
+    const current = this.generationOf(opts.projectId, opts.agentId);
+    const req: AgentPermissionUpgradeRequest = {
+      requestId: `req_${now.getTime()}_${++this.requestSeq}`,
+      projectId: opts.projectId,
+      agentId: opts.agentId,
+      currentRole: current?.role ?? DEFAULT_AGENT_AUTH_ROLE,
+      grants: cleanGrants,
+      ...(opts.reason !== undefined ? { reason: opts.reason } : {}),
+      ...(opts.routeId !== undefined ? { routeId: opts.routeId } : {}),
+      status: "pending",
+      createdAt: now.toISOString(),
+    };
+    const key = this.agentKey(opts.projectId, opts.agentId);
+    const list = this.upgradeRequests.get(key) ?? [];
+    list.push(req);
+    this.upgradeRequests.set(key, list);
+    return req;
+  }
+
+  applyUpgradeDecision(
+    projectId: string,
+    agentId: string,
+    grants: readonly string[],
+    decision: Exclude<PermissionUpgradeDecision, "deny">,
+    now = new Date(),
+  ): void {
+    const clean = grants
+      .map((g) => parseRefinedGrant(g).target)
+      .filter(Boolean);
+    if (clean.length === 0) return;
+    const key = this.agentKey(projectId, agentId);
+
+    if (decision === "allowed_once") {
+      const list = this.onceGrants.get(key) ?? [];
+      list.push({ grants: clean, remainingUses: 1, createdAt: now.toISOString() });
+      this.onceGrants.set(key, list);
+      return;
+    }
+
+    if (decision === "allowed_for_agent") {
+      let set = this.agentSessionGrants.get(key);
+      if (!set) {
+        set = new Set();
+        this.agentSessionGrants.set(key, set);
+      }
+      for (const g of clean) set.add(g);
+      return;
+    }
+
+    // "always_allowed" -> write role / persistent grant to DB
+    const current = this.generationOf(projectId, agentId);
+    let nextRole = current?.role ?? DEFAULT_AGENT_AUTH_ROLE;
+    const existing = [...(current?.apiIds ?? [])];
+    const knownAgentRoles = new Set(this.listAgentRoles().map((r) => r.id));
+    for (const g of clean) {
+      if (clean.length === 1 && knownAgentRoles.has(g)) {
+        nextRole = g;
+      } else {
+        const filtered = existing.filter((e) => parseRefinedGrant(e).target !== g);
+        existing.length = 0;
+        existing.push(...filtered, g);
+      }
+    }
+    this.updateGrant(projectId, agentId, nextRole, existing, now, {
+      clearTemporaryGrants: false,
+    });
+  }
+
+  decideUpgradeRequest(opts: {
+    projectId: string;
+    agentId: string;
+    requestId: string;
+    decision: WithAskDecisionInput | string;
+    now?: Date;
+  }): { request: AgentPermissionUpgradeRequest; grant: AgentAuthGrant | null } {
+    const key = this.agentKey(opts.projectId, opts.agentId);
+    const list = this.upgradeRequests.get(key) ?? [];
+    const idx = list.findIndex((r) => r.requestId === opts.requestId);
+    if (idx < 0) {
+      throw new Error(`Permission upgrade request "${opts.requestId}" not found.`);
+    }
+    const existing = list[idx]!;
+    const now = opts.now ?? new Date();
+    const normalized = normalizeUpgradeDecision(opts.decision);
+    const updated: AgentPermissionUpgradeRequest = {
+      ...existing,
+      status: normalized === "deny" ? "denied" : "approved",
+      decision: normalized,
+      decidedAt: now.toISOString(),
+    };
+    list[idx] = updated;
+    if (normalized !== "deny") {
+      this.applyUpgradeDecision(
+        opts.projectId,
+        opts.agentId,
+        existing.grants,
+        normalized,
+        now,
+      );
+    }
+    return { request: updated, grant: this.currentGrant(opts.projectId, opts.agentId) };
+  }
+
+  listUpgradeRequests(
+    projectId: string,
+    agentId: string,
+  ): readonly AgentPermissionUpgradeRequest[] {
+    return [...(this.upgradeRequests.get(this.agentKey(projectId, agentId)) ?? [])];
+  }
+
+  temporaryGrantsOf(projectId: string, agentId: string): AgentTemporaryGrantsSummary {
+    const key = this.agentKey(projectId, agentId);
+    const once = (this.onceGrants.get(key) ?? []).filter((e) => e.remainingUses > 0);
+    const session = [...(this.agentSessionGrants.get(key) ?? [])];
+    return { onceGrants: once, agentSessionGrants: session };
+  }
+
+  consumeOnceGrant(
+    projectId: string,
+    agentId: string,
+    routeId: string,
+    groupId?: string,
+  ): boolean {
+    const key = this.agentKey(projectId, agentId);
+    const list = this.onceGrants.get(key);
+    if (!list || list.length === 0) return false;
+    for (let i = 0; i < list.length; i++) {
+      const entry = list[i]!;
+      if (entry.remainingUses <= 0) continue;
+      const expanded = expandRoleGrant("none", entry.grants);
+      if (
+        expanded.allEndpoints ||
+        matchesRouteGrant(expanded.apiIds, routeId, groupId)
+      ) {
+        entry.remainingUses--;
+        if (entry.remainingUses <= 0) list.splice(i, 1);
+        return true;
+      }
+    }
+    return false;
+  }
+
   authenticate(bearer: string, now: Date): AgentAuthContext | null {
     const row: AuthRoleSessionRow | null = this.authRoleSessions.findByTokenHash(
       authRoleSessionTokenHash(bearer),
     );
     if (row === null || row.expiresAt <= now.toISOString()) return null;
-    const grant = this.agentAuthPermissions.grantOf(row.projectId, row.agentId);
+    const grant = this.currentGrant(row.projectId, row.agentId);
     if (grant === null) return null;
     this.authRoleSessions.touch(row.tokenHash, now.toISOString());
     return {
@@ -131,7 +364,11 @@ export class AgentAuthService implements AgentAuth {
   }
 
   revokeAll(projectId: string, agentId: string): void {
-    this.activeTokens.delete(`${projectId}\0${agentId}`);
+    const key = this.agentKey(projectId, agentId);
+    this.activeTokens.delete(key);
+    this.onceGrants.delete(key);
+    this.agentSessionGrants.delete(key);
+    this.upgradeRequests.delete(key);
     this.authRoleSessions.deleteByAgent(projectId, agentId);
   }
 }
@@ -140,29 +377,64 @@ interface CachedAgentGrant {
   readonly generation: number;
   readonly registryVersion: number;
   readonly role: AgentAuthRole;
+  readonly sessionExtraKey: string;
   readonly grant: AgentAuthGrant;
 }
 
 @Component({
   contributes: {
     "AgentAuthPermissionProvider.roles": [
-      { id: "role.none" },
-      { id: "role.readonly" },
-      { id: "role.general", children: ["readonly"] },
+      {
+        id: "role.none",
+        description:
+          "No HTTP capability grants; agent can only inspect its own auth and request permission upgrades.",
+      },
+      {
+        id: "role.readonly",
+        description: "Read-only access across project resources.",
+      },
+      {
+        id: "role.general",
+        children: ["readonly"],
+        description:
+          "Default workflow: read-all, session/workspace/org/browser writes, and @self writes on own agent config, memory, schedules, and workbenches.",
+      },
+      {
+        id: "role.general-with-ask",
+        children: ["general"],
+        withAsk: [
+          "agent.maintain",
+          "memory.maintain",
+          "schedule.maintain",
+          "workbench.maintain",
+          "skill.maintain",
+          "plugin.maintain",
+          "model.maintain",
+          "vault.maintain",
+          "machine.maintain",
+          "messaging.maintain",
+          "agents.messaging.maintain",
+        ],
+        description:
+          "Interactive workflow: inherits general (@self writes auto-allowed) and gates cross-agent or system maintenance behind @withAsk approval.",
+      },
       {
         id: "role.system-maintainer",
         children: ["general"],
         flags: { allEndpoints: false, agentApi: true },
+        description: "System & RSI maintainer workflow across all domains.",
       },
       {
         id: "role.admin",
         children: ["system-maintainer"],
         flags: { allEndpoints: true, agentApi: false },
+        description: "Project/instance administrator workflow.",
       },
       {
         id: "role.full-permissions",
         children: ["admin"],
         flags: { allEndpoints: true, agentApi: true },
+        description: "Unrestricted full permissions including human-gated endpoints.",
       },
     ],
   },
@@ -197,6 +469,26 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
     this.roleRegistry.registerRole(roleId, contribution, sourceModule);
   }
 
+  defineAgentRole(def: AgentRoleDefinition, sourceModule?: string): AgentRoleDefinition {
+    return this.roleRegistry.defineAgentRole(def, sourceModule);
+  }
+
+  listAgentRoles(): readonly AgentRoleDefinition[] {
+    return this.roleRegistry.listAgentRoles();
+  }
+
+  roleTreeSnapshot(): {
+    readonly agentRoles: readonly AgentRoleDefinition[];
+    readonly roleTree: Readonly<Record<string, RoleNode>>;
+    readonly allHttpRouteIds: readonly string[];
+  } {
+    return {
+      agentRoles: this.roleRegistry.listAgentRoles(),
+      roleTree: this.roleRegistry.roleTree,
+      allHttpRouteIds: this.roleRegistry.allHttpRouteIds,
+    };
+  }
+
   registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void {
     this.roleRegistry.registerRoute(registration, sourceModule);
   }
@@ -209,35 +501,52 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
     return this.roleRegistry.describeRouteAuthFailure(routeId, role, groupId);
   }
 
-  grantOf(projectId: string, agentId: string): AgentAuthGrant | null {
+  grantOf(
+    projectId: string,
+    agentId: string,
+    sessionExtraGrants: readonly string[] = [],
+  ): AgentAuthGrant | null {
     const cacheKey = `${projectId}\0${agentId}`;
     const current = this.authRoleSessions.generationOf(projectId, agentId);
-    if (current === null) {
-      this.grantCache.delete(cacheKey);
-      return null;
-    }
+    const generation = current?.generation ?? 0;
+    const role = current?.role ?? DEFAULT_AGENT_AUTH_ROLE;
+    const configuredApiIds = current?.apiIds ?? [];
+    const sessionExtraKey = sessionExtraGrants.join(",");
     const registryVersion = this.roleRegistry.version;
     const cached = this.grantCache.get(cacheKey);
     if (
       cached !== undefined &&
-      cached.generation === current.generation &&
+      cached.generation === generation &&
       cached.registryVersion === registryVersion &&
-      cached.role === current.role
+      cached.role === role &&
+      cached.sessionExtraKey === sessionExtraKey
     ) {
       return cached.grant;
     }
-    const expanded = this.roleRegistry.expandRoleGrant(current.role, current.apiIds);
+    const combinedApiIds =
+      sessionExtraGrants.length > 0
+        ? [...new Set([...configuredApiIds, ...sessionExtraGrants])]
+        : configuredApiIds;
+    const expanded = this.roleRegistry.expandRoleGrant(role, combinedApiIds, {
+      fallbackOnUnknownPrimary: true,
+    });
     const grant: AgentAuthGrant = {
-      role: current.role,
-      generation: current.generation,
+      role,
+      generation,
       allEndpoints: expanded.allEndpoints,
       agentApi: expanded.agentApi,
       apiIds: expanded.apiIds,
+      configuredApiIds,
+      inheritedRoles: expanded.inheritedRoles,
+      unconditionalRoutes: expanded.unconditionalRoutes,
+      routeRefiners: expanded.routeRefiners,
+      mismatches: expanded.mismatches,
     };
     this.grantCache.set(cacheKey, {
-      generation: current.generation,
+      generation,
       registryVersion,
-      role: current.role,
+      role,
+      sessionExtraKey,
       grant,
     });
     return grant;

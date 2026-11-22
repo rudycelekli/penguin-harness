@@ -24,9 +24,33 @@ export interface RoleNode {
 export interface RoleContribution {
   role?: string;
   children?: readonly string[];
+   withAsk?: readonly string[];
   routes?: readonly string[];
   flags?: RoleFlags;
   parents?: readonly string[];
+  description?: string;
+}
+
+/**
+ * High-level Agent Role definition: aggregates RoleTree capability nodes (`inherits`),
+ * optional `@withAsk`-refined roles/routes (`withAsk`), and explicit routes to restrict Session permissions.
+ */
+export interface AgentRoleDefinition {
+  readonly id: string;
+  readonly inherits: readonly string[];
+  readonly withAsk?: readonly string[];
+  readonly routes?: readonly string[];
+  readonly flags?: RoleFlags;
+  readonly builtin?: boolean;
+  readonly description?: string;
+}
+
+export interface RoleGrantMismatches {
+  readonly hasMismatch: boolean;
+  readonly unknownPrimaryRole: boolean;
+  readonly fallbackRole?: string;
+  readonly unknownRoles: readonly string[];
+  readonly unknownRoutes: readonly string[];
 }
 
 export interface RouteRoleRegistration {
@@ -53,6 +77,8 @@ export interface RouteAuthDebugInfo {
   readonly roleSourceModules: readonly string[];
   readonly bindingSourceModules: readonly string[];
   readonly requiredRoles: readonly string[];
+  readonly suggestedWithAsk: readonly string[];
+  readonly suggestedUpgradeGrants: readonly string[];
 }
 
 export interface RefinedGrantRef {
@@ -65,6 +91,9 @@ export interface ExpandedRoleGrant {
   agentApi: boolean;
   apiIds: ReadonlySet<string>;
   routeRefiners: Record<string, string[]>;
+  inheritedRoles: readonly string[];
+  unconditionalRoutes: readonly string[];
+  mismatches: RoleGrantMismatches;
 }
 
 interface MutableRoleNode {
@@ -157,6 +186,7 @@ export class RoleRegistry {
   private readonly baseRoleCache = new Map<string, ExpandedRoleGrant>();
   private readonly refinerSources = new Map<string, string>();
   private readonly staticRefiners = new Map<string, { roles: Set<string>; routes: Set<string> }>();
+  private readonly agentRoleDefs = new Map<string, AgentRoleDefinition>();
   private registryVersion = 0;
 
   constructor(options?: { seedBuiltin?: boolean }) {
@@ -308,6 +338,8 @@ export class RoleRegistry {
       routeSourceModule !== "unknown"
         ? routeSourceModule
         : (bindingSourceModules[0] ?? roleSourceModules[0] ?? "unknown");
+    const suggestedUpgradeGrants = [...new Set([...requiredRoles, norm])];
+    const suggestedWithAsk = suggestedUpgradeGrants.map((g) => `${g}@withAsk`);
     return {
       routeId: norm,
       ...(normGroup !== undefined ? { groupId: normGroup } : {}),
@@ -317,6 +349,8 @@ export class RoleRegistry {
       roleSourceModules,
       bindingSourceModules,
       requiredRoles,
+      suggestedWithAsk,
+      suggestedUpgradeGrants,
     };
   }
 
@@ -377,7 +411,14 @@ export class RoleRegistry {
     if (!targetRole) return;
     const node = this.ensureRoleNode(targetRole, sourceModule);
 
-    for (const childSpec of contribution.children ?? []) {
+    const childrenWithAsk = [
+      ...(contribution.children ?? []),
+      ...(contribution.withAsk ?? []).map((s) => {
+        const t = s.trim();
+        return t && !t.includes("@") ? `${t}@withAsk` : t;
+      }),
+    ];
+    for (const childSpec of childrenWithAsk) {
       const trimmed = childSpec.trim();
       if (!trimmed) continue;
       assertNoWildcard(trimmed, `registerRole("${targetRole}").children`);
@@ -404,7 +445,61 @@ export class RoleRegistry {
         this.recordStaticRefiner("roles", targetRole, parsed.refinerId, sourceModule);
       if (!parentNode.children.includes(childRef)) parentNode.children.push(childRef);
     }
+    if (sourceModule === "AgentAuthPermissionProvider" || contribution.description !== undefined) {
+      this.agentRoleDefs.set(targetRole, {
+        id: targetRole,
+        inherits: [...node.children],
+        ...(contribution.withAsk !== undefined ? { withAsk: [...contribution.withAsk] } : {}),
+        ...(node.routes.length > 0 ? { routes: [...node.routes] } : {}),
+        flags: { ...node.flags },
+        builtin: sourceModule === "AgentAuthPermissionProvider",
+        ...(contribution.description !== undefined
+          ? { description: contribution.description }
+          : {}),
+      });
+    }
     this.bumpVersion();
+  }
+
+  defineAgentRole(def: AgentRoleDefinition, sourceModule = "user"): AgentRoleDefinition {
+    const targetRole = def.id.replace(/^role\./, "").trim();
+    assertNoWildcard(targetRole, `defineAgentRole("${targetRole}")`);
+    if (!targetRole) throw new Error("Agent role id must not be empty.");
+    const node = this.ensureRoleNode(targetRole, sourceModule);
+    node.children = [];
+    node.routes = [];
+    node.flags = {};
+    this.registerRole(
+      targetRole,
+      {
+        role: targetRole,
+        children: def.inherits,
+        ...(def.withAsk !== undefined ? { withAsk: def.withAsk } : {}),
+        ...(def.routes !== undefined ? { routes: def.routes } : {}),
+        ...(def.flags !== undefined ? { flags: def.flags } : {}),
+        ...(def.description !== undefined ? { description: def.description } : {}),
+      },
+      sourceModule,
+    );
+    const stored: AgentRoleDefinition = {
+      id: targetRole,
+      inherits: [...def.inherits],
+      ...(def.withAsk !== undefined ? { withAsk: [...def.withAsk] } : {}),
+      ...(def.routes !== undefined ? { routes: [...def.routes] } : {}),
+      ...(def.flags !== undefined ? { flags: { ...def.flags } } : {}),
+      builtin: Boolean(def.builtin),
+      ...(def.description !== undefined ? { description: def.description } : {}),
+    };
+    this.agentRoleDefs.set(targetRole, stored);
+    return stored;
+  }
+
+  getAgentRole(id: string): AgentRoleDefinition | undefined {
+    return this.agentRoleDefs.get(id.replace(/^role\./, "").trim());
+  }
+
+  listAgentRoles(): readonly AgentRoleDefinition[] {
+    return [...this.agentRoleDefs.values()];
   }
 
   registerRoles(
@@ -513,19 +608,28 @@ export class RoleRegistry {
       this.registerRoleBinding(item.data ?? item, item.from ?? defaultSourceModule);
   }
 
-  expandRoleGrant(role: string, extraGrants: readonly string[] = []): ExpandedRoleGrant {
+  expandRoleGrant(
+    role: string,
+    extraGrants: readonly string[] = [],
+    options?: { fallbackOnUnknownPrimary?: boolean },
+  ): ExpandedRoleGrant {
     assertNoWildcard(role, `expandRoleGrant(role="${role}")`);
     for (const extra of extraGrants)
       assertNoWildcard(extra, `expandRoleGrant(extraGrants="${extra}")`);
-    if (extraGrants.length === 0) {
+    if (extraGrants.length === 0 && !options?.fallbackOnUnknownPrimary) {
       const cached = this.baseRoleCache.get(role);
       if (cached) return cached;
     }
 
     const visited = new Set<string>();
+    const inheritedRoles: string[] = [];
     const allRoutes = new Set<string>();
     const unconditionalRoutes = new Set<string>();
     const refinedRouteMap = new Map<string, Set<string>>();
+    const unknownRoles: string[] = [];
+    const unknownRoutes: string[] = [];
+    let unknownPrimaryRole = false;
+    let fallbackRole: string | undefined;
     let allEndpoints = false;
     let agentApi = false;
 
@@ -560,6 +664,8 @@ export class RoleRegistry {
 
       const node = this.tree[r];
       if (!node) return;
+      const roleLabel = eff !== null ? `${r}@${eff}` : r;
+      if (!inheritedRoles.includes(roleLabel)) inheritedRoles.push(roleLabel);
       if (eff === null) {
         if (node.flags.allEndpoints) allEndpoints = true;
         if (node.flags.agentApi) agentApi = true;
@@ -578,18 +684,39 @@ export class RoleRegistry {
       }
     };
 
-    const applySpec = (spec: string): void => {
+    const classifyUnknown = (target: string, isPrimary: boolean): void => {
+      const norm = this.normalizeRouteId(target);
+      if (this.routeMeta.has(norm) || this.allRoutesList.includes(norm)) return;
+      if (isPrimary || target.startsWith("role.") || /\.(read|maintain|all)$/.test(target)) {
+        if (!unknownRoles.includes(target)) unknownRoles.push(target);
+      } else if (!unknownRoutes.includes(norm)) {
+        unknownRoutes.push(norm);
+      }
+    };
+
+    const applySpec = (spec: string, isPrimary = false): void => {
       const parsed = parseRefinedGrant(spec);
       if (!parsed.target) return;
-      if (this.isRole(parsed.target)) {
-        visitRole(parsed.target, parsed.refinerId, parsed.refinerId !== null);
+      const cleanRole = parsed.target.replace(/^role\./, "");
+      if (this.isRole(cleanRole)) {
+        visitRole(cleanRole, parsed.refinerId, parsed.refinerId !== null);
+      } else if (isPrimary && !this.routeMeta.has(this.normalizeRouteId(parsed.target))) {
+        unknownPrimaryRole = true;
+        classifyUnknown(parsed.target, true);
+        if (this.isRole("readonly")) {
+          fallbackRole = "readonly";
+          if (options?.fallbackOnUnknownPrimary) {
+            visitRole("readonly", parsed.refinerId, parsed.refinerId !== null);
+          }
+        }
       } else {
+        classifyUnknown(parsed.target, false);
         recordRoute(parsed.target, parsed.refinerId);
       }
     };
 
-    applySpec(role);
-    for (const extra of extraGrants) applySpec(extra);
+    applySpec(role, true);
+    for (const extra of extraGrants) applySpec(extra, false);
 
     const routeRefiners: Record<string, string[]> = {};
     const routeRefinerMap = new Map<string, readonly string[]>();
@@ -603,8 +730,25 @@ export class RoleRegistry {
       }
     }
     COMPILED_GRANT_META.set(allRoutes, { unconditionalSet: unconditionalRoutes, routeRefinerMap });
-    const result: ExpandedRoleGrant = { allEndpoints, agentApi, apiIds: allRoutes, routeRefiners };
-    if (extraGrants.length === 0) this.baseRoleCache.set(role, result);
+    const mismatches: RoleGrantMismatches = {
+      hasMismatch: unknownPrimaryRole || unknownRoles.length > 0 || unknownRoutes.length > 0,
+      unknownPrimaryRole,
+      ...(fallbackRole !== undefined ? { fallbackRole } : {}),
+      unknownRoles,
+      unknownRoutes,
+    };
+    const result: ExpandedRoleGrant = {
+      allEndpoints,
+      agentApi,
+      apiIds: allRoutes,
+      routeRefiners,
+      inheritedRoles,
+      unconditionalRoutes: [...unconditionalRoutes].sort(),
+      mismatches,
+    };
+    if (extraGrants.length === 0 && !options?.fallbackOnUnknownPrimary) {
+      this.baseRoleCache.set(role, result);
+    }
     return result;
   }
 

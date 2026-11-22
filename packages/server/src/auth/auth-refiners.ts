@@ -145,6 +145,30 @@ export class AuthSelfRefiner {
   }
 }
 
+export type PermissionUpgradeDecision =
+  | "allowed_once"
+  | "allowed_for_agent"
+  | "always_allowed"
+  | "deny";
+
+export type WithAskDecisionInput =
+  | boolean
+  | PermissionUpgradeDecision
+  | "once"
+  | "agent"
+  | "always";
+
+export function normalizeUpgradeDecision(
+  raw: WithAskDecisionInput | string | undefined,
+): PermissionUpgradeDecision {
+  if (raw === true || raw === "once" || raw === "allowed_once") return "allowed_once";
+  if (raw === "agent" || raw === "allowed_for_agent" || raw === "when_use_this_agent")
+    return "allowed_for_agent";
+  if (raw === "always" || raw === "always_allowed" || raw === "write_role")
+    return "always_allowed";
+  return "deny";
+}
+
 /** Built-in `@withAsk` refiner: requires interactive approval within `ctx.projectId`. */
 @Component({
   contributes: {
@@ -153,14 +177,36 @@ export class AuthSelfRefiner {
 })
 export class AuthWithAskRefiner {
   @Bind("withAsk") readonly refiner: AuthRefiner = this;
+  private upgradeHandler?: (
+    decision: Exclude<PermissionUpgradeDecision, "deny">,
+    ctx: AuthRefinerContext,
+    action: AuthRefinerAction,
+  ) => Promise<void> | void;
 
   constructor(
     private readonly decide?: (
       ctx: AuthRefinerContext,
       action: AuthRefinerAction,
       request?: Opaque<"Request", Request>,
-    ) => Promise<boolean> | boolean,
-  ) {}
+    ) => Promise<WithAskDecisionInput> | WithAskDecisionInput,
+    onUpgradeDecision?: (
+      decision: Exclude<PermissionUpgradeDecision, "deny">,
+      ctx: AuthRefinerContext,
+      action: AuthRefinerAction,
+    ) => Promise<void> | void,
+  ) {
+    if (onUpgradeDecision !== undefined) this.upgradeHandler = onUpgradeDecision;
+  }
+
+  setUpgradeDecisionHandler(
+    handler: (
+      decision: Exclude<PermissionUpgradeDecision, "deny">,
+      ctx: AuthRefinerContext,
+      action: AuthRefinerAction,
+    ) => Promise<void> | void,
+  ): void {
+    if (this.upgradeHandler === undefined) this.upgradeHandler = handler;
+  }
 
   async authenticate(
     ctx: AuthRefinerContext,
@@ -170,7 +216,12 @@ export class AuthWithAskRefiner {
     if (action.params.projectId !== undefined && action.params.projectId !== ctx.projectId) {
       return false;
     }
-    return typeof this.decide === "function" && Boolean(await this.decide(ctx, action, request));
+    if (typeof this.decide !== "function") return false;
+    const raw = await this.decide(ctx, action, request);
+    const normalized = normalizeUpgradeDecision(raw);
+    if (normalized === "deny") return false;
+    if (this.upgradeHandler) await this.upgradeHandler(normalized, ctx, action);
+    return true;
   }
 }
 
@@ -359,6 +410,22 @@ export class AuthRefinerRegistry {
     return this.byId.has(refinerId);
   }
 
+  bindUpgradeDecisionHandler(
+    handler: (
+      decision: Exclude<PermissionUpgradeDecision, "deny">,
+      ctx: AuthRefinerContext,
+      action: AuthRefinerAction,
+    ) => Promise<void> | void,
+  ): void {
+    for (const entries of this.byId.values()) {
+      for (const entry of entries) {
+        if (entry.refiner instanceof AuthWithAskRefiner) {
+          entry.refiner.setUpgradeDecisionHandler(handler);
+        }
+      }
+    }
+  }
+
   resolveForRoute(
     refinerId: string,
     routeId: string,
@@ -386,6 +453,8 @@ export class AuthRefinerRegistry {
 
   sortRefinerIds(refinerIds: readonly string[]): string[] {
     return [...refinerIds].sort((a, b) => {
+      if (a === "withAsk" && b !== "withAsk") return 1;
+      if (b === "withAsk" && a !== "withAsk") return -1;
       const ra = this.orderIndex.get(a) ?? Number.MAX_SAFE_INTEGER;
       const rb = this.orderIndex.get(b) ?? Number.MAX_SAFE_INTEGER;
       return ra - rb || a.localeCompare(b);
@@ -429,6 +498,7 @@ export class AuthRefinerRegistry {
       message,
     });
 
+    let lastDenial: AuthRefinerEvaluationResult | null = null;
     for (const refinerId of this.sortRefinerIds(refinerIds)) {
       const resolved = this.resolveForRoute(refinerId, action.routeId);
       if (resolved.status === "undefined") {
@@ -479,17 +549,16 @@ export class AuthRefinerRegistry {
           src,
         );
       }
-      if (!allowed) {
-        return fail(
-          "permission_required",
-          "refiner_denied",
-          refinerId,
-          src,
-          `Auth refiner "@${refinerId}" denied action "${action.routeId}" for role "${ctx.role}" (sourceModule: ${src}, routeSourceModule: ${routeSourceModule}).`,
-          src,
-        );
-      }
+      if (allowed) return { ok: true };
+      lastDenial = fail(
+        "permission_required",
+        "refiner_denied",
+        refinerId,
+        src,
+        `Auth refiner "@${refinerId}" denied action "${action.routeId}" for role "${ctx.role}" (sourceModule: ${src}, routeSourceModule: ${routeSourceModule}).`,
+        src,
+      );
     }
-    return { ok: true };
+    return lastDenial ?? { ok: true };
   }
 }

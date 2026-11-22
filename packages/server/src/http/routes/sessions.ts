@@ -2051,13 +2051,29 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/auth",
         auth: "user",
-        role: "agent.read",
+        roles: ["agent.read", "none@self"],
         order: 140,
       },
       {
         id: "agent.auth.update",
         method: "PUT",
         prefix: "/api/projects/:projectId/agents/:agentId/auth",
+        auth: "user",
+        role: "admin.maintain",
+        order: 140,
+      },
+      {
+        id: "agent.auth.requestUpgrade",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/auth/requests",
+        auth: "user",
+        roles: ["agent.read", "none@self"],
+        order: 140,
+      },
+      {
+        id: "agent.auth.decideRequest",
+        method: "POST",
+        prefix: "/api/projects/:projectId/agents/:agentId/auth/requests/:requestId/decide",
         auth: "user",
         role: "admin.maintain",
         order: 140,
@@ -2719,6 +2735,8 @@ export class SessionApiRoutes {
   @Bind("agent.delete") agentDeleteRoute!: Hono<AppEnv>;
   @Bind("agent.auth.get") agentAuthGetRoute!: Hono<AppEnv>;
   @Bind("agent.auth.update") agentAuthUpdateRoute!: Hono<AppEnv>;
+  @Bind("agent.auth.requestUpgrade") agentAuthRequestUpgradeRoute!: Hono<AppEnv>;
+  @Bind("agent.auth.decideRequest") agentAuthDecideRequestRoute!: Hono<AppEnv>;
   @Bind("agent.getDeletion") agentGetDeletionRoute!: Hono<AppEnv>;
   @Bind("agent.config.get") agentConfigGetRoute!: Hono<AppEnv>;
   @Bind("agent.config.update") agentConfigUpdateRoute!: Hono<AppEnv>;
@@ -2916,6 +2934,12 @@ export class SessionApiRoutes {
     this.agentDeleteRoute = endpointOf(agentsGroup, "DELETE", "/:agentId");
     this.agentAuthGetRoute = endpointOf(agentsGroup, "GET", "/:agentId/auth");
     this.agentAuthUpdateRoute = endpointOf(agentsGroup, "PUT", "/:agentId/auth");
+    this.agentAuthRequestUpgradeRoute = endpointOf(agentsGroup, "POST", "/:agentId/auth/requests");
+    this.agentAuthDecideRequestRoute = endpointOf(
+      agentsGroup,
+      "POST",
+      "/:agentId/auth/requests/:requestId/decide",
+    );
     const deletionsGroup = agentDeletionsRoutes({ access, agentService: this.agents });
     this.agentGetDeletionRoute = endpointOf(deletionsGroup, "GET", "/:deletionId");
     const agentConfigGroup = agentConfigRoutes({

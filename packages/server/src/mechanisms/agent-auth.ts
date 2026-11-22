@@ -6,13 +6,51 @@ import { Interface } from "@prismshadow/penguin-core/kernel";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
 import type {
   AgentAuthRole,
+  AgentRoleDefinition,
   RoleContribution,
+  RoleGrantMismatches,
   RoleHttpBindingContribution,
+  RoleNode,
   RouteAuthDebugInfo,
   RouteRoleRegistration,
 } from "../auth/agent-roles.js";
+import type {
+  PermissionUpgradeDecision,
+  WithAskDecisionInput,
+} from "../auth/auth-refiners.js";
 import type { AgentAuthContext } from "../auth/agent-auth-service.js";
 import type { AuthSubjectKind } from "../db/repos/auth-role-sessions.js";
+
+/** One permission upgrade request submitted by an Agent or triggered via `@withAsk`. */
+export interface AgentPermissionUpgradeRequest {
+  readonly requestId: string;
+  readonly projectId: string;
+  readonly agentId: string;
+  readonly currentRole: string;
+  readonly grants: readonly string[];
+  readonly reason?: string;
+  readonly routeId?: string;
+  readonly status: "pending" | "approved" | "denied";
+  readonly decision?: PermissionUpgradeDecision;
+  readonly createdAt: string;
+  readonly decidedAt?: string;
+}
+
+export interface AgentTemporaryGrantsSummary {
+  readonly onceGrants: ReadonlyArray<{
+    readonly grants: readonly string[];
+    readonly remainingUses: number;
+    readonly requestId?: string;
+    readonly createdAt: string;
+  }>;
+  readonly agentSessionGrants: readonly string[];
+}
+
+export interface UpdateAgentGrantOptions {
+  readonly inherits?: readonly string[];
+  readonly withAsk?: readonly string[];
+  readonly clearTemporaryGrants?: boolean;
+}
 
 /** One issued session, as surfaces show it (never the raw token). */
 export interface AuthRoleSessionInfo {
@@ -50,6 +88,11 @@ export interface AgentAuthGrant {
   allEndpoints: boolean;
   agentApi?: boolean;
   apiIds: ReadonlySet<string>;
+  configuredApiIds?: readonly string[];
+  inheritedRoles?: readonly string[];
+  unconditionalRoutes?: readonly string[];
+  routeRefiners?: Readonly<Record<string, readonly string[]>>;
+  mismatches?: RoleGrantMismatches;
 }
 
 /** The principal's CURRENT generation row: what re-derivation reads. */
@@ -72,12 +115,23 @@ export interface AgentAuthPermissionsSlots {
 /** The per-route grant face: what AgentAuthPermissionProvider implements. */
 @Interface()
 export abstract class AgentAuthPermissions {
-  abstract grantOf(projectId: string, agentId: string): AgentAuthGrant | null;
+  abstract grantOf(
+    projectId: string,
+    agentId: string,
+    sessionExtraGrants?: readonly string[],
+  ): AgentAuthGrant | null;
   abstract registerRole(
     roleId: string,
     contribution: RoleContribution,
     sourceModule?: string,
   ): void;
+  abstract defineAgentRole(def: AgentRoleDefinition, sourceModule?: string): AgentRoleDefinition;
+  abstract listAgentRoles(): readonly AgentRoleDefinition[];
+  abstract roleTreeSnapshot(): {
+    readonly agentRoles: readonly AgentRoleDefinition[];
+    readonly roleTree: Readonly<Record<string, RoleNode>>;
+    readonly allHttpRouteIds: readonly string[];
+  };
   abstract registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void;
   abstract registerRoleBinding(
     contribution: RoleHttpBindingContribution,
@@ -150,12 +204,20 @@ export abstract class AgentAuth {
     role: AgentAuthRole,
     apiIds: readonly string[],
     now: Date,
+    options?: UpdateAgentGrantOptions,
   ): { generation: number; role: AgentAuthRole; apiIds: readonly string[]; token: string };
   abstract registerRole(
     roleId: string,
     contribution: RoleContribution,
     sourceModule?: string,
   ): void;
+  abstract defineAgentRole(def: AgentRoleDefinition, sourceModule?: string): AgentRoleDefinition;
+  abstract listAgentRoles(): readonly AgentRoleDefinition[];
+  abstract roleTreeSnapshot(): {
+    readonly agentRoles: readonly AgentRoleDefinition[];
+    readonly roleTree: Readonly<Record<string, RoleNode>>;
+    readonly allHttpRouteIds: readonly string[];
+  };
   abstract registerRoute(registration: RouteRoleRegistration, sourceModule?: string): void;
   abstract registerRoleBinding(
     contribution: RoleHttpBindingContribution,
@@ -166,4 +228,37 @@ export abstract class AgentAuth {
     role: string,
     groupId?: string,
   ): RouteAuthDebugInfo;
+  abstract requestUpgrade(opts: {
+    projectId: string;
+    agentId: string;
+    grants: readonly string[];
+    reason?: string;
+    routeId?: string;
+    now?: Date;
+  }): AgentPermissionUpgradeRequest;
+  abstract decideUpgradeRequest(opts: {
+    projectId: string;
+    agentId: string;
+    requestId: string;
+    decision: WithAskDecisionInput | string;
+    now?: Date;
+  }): { request: AgentPermissionUpgradeRequest; grant: AgentAuthGrant | null };
+  abstract listUpgradeRequests(
+    projectId: string,
+    agentId: string,
+  ): readonly AgentPermissionUpgradeRequest[];
+  abstract temporaryGrantsOf(projectId: string, agentId: string): AgentTemporaryGrantsSummary;
+  abstract consumeOnceGrant(
+    projectId: string,
+    agentId: string,
+    routeId: string,
+    groupId?: string,
+  ): boolean;
+  abstract applyUpgradeDecision(
+    projectId: string,
+    agentId: string,
+    grants: readonly string[],
+    decision: Exclude<PermissionUpgradeDecision, "deny">,
+    now?: Date,
+  ): void;
 }
