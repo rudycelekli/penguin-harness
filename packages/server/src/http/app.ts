@@ -30,7 +30,7 @@ import type { Auth, Users } from "@prismshadow/penguin-library-auth";
 import type { Access, Projects } from "@prismshadow/penguin-library-project";
 import type { Errors } from "@prismshadow/penguin-library-observability";
 import type { Settings } from "@prismshadow/penguin-library-setting";
-import type { AgentAuth } from "../mechanisms/agent-auth.js";
+import type { AgentAuth, AgentAuthGrant } from "../mechanisms/agent-auth.js";
 import {
   DEFAULT_ROLE_REGISTRY,
   RoleRegistry,
@@ -125,7 +125,7 @@ async function checkRouteAuth(
 ): Promise<void> {
   const agentAuth = (c.var as AppEnv["Variables"]).agentAuth;
   if (agentAuth === undefined) return;
-  const { grant } = agentAuth;
+  const grant = agentAuth.grant as AgentAuthGrant;
   const normalized = roleRegistry.normalizeRouteId(routeId);
   const normalizedGroup =
     groupId !== undefined ? roleRegistry.normalizeRouteId(groupId) : undefined;
