@@ -95,7 +95,7 @@ When a component defines several endpoints on one `Hono` group, `endpointOf(grou
 
 ### Extensible Role Registry (`RoleRegistry`), `roles`, and `roleBindings` slots
 
-The role tree and route bindings are assembled exclusively through declarative module contributions (`BuiltinAuthRoles` contributes the built-in domain and composite roles alongside feature modules and external plugins):
+The role tree and route bindings are assembled exclusively through declarative module contributions (`AgentAuthPermissionProvider` contributes the six top-level persona roles, and each feature module or external plugin contributes its own domain roles, route `role` declarations, and `roleBindings`):
 
 1. **Role node contributions (`HttpModule.roles` / `AgentAuthPermissionProvider.roles`)**: Components contribute `RoleContribution` entries to define new role nodes or extend existing roles additively:
 

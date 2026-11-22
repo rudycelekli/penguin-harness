@@ -389,6 +389,34 @@ export function meRoutes(deps: MeRouteDeps): Hono<AppEnv> {
         order: 10,
       },
     ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "me.bindings",
+        endpoints: {
+          me: {
+            "GET /": "me.get",
+            "PUT /password": "me.updatePassword",
+            "PUT /profile": "me.updateProfile",
+            "GET /prefs": "me.getPrefs",
+            "PUT /prefs": "me.updatePrefs",
+            "GET /background-image": "me.getBackgroundImage",
+            "PUT /background-image": "me.updateBackgroundImage",
+            "GET /drafts": "me.getDrafts",
+            "PATCH /drafts": "me.updateDrafts",
+          },
+        },
+        bindings: {
+          "system.read": ["me.get", "me.getPrefs", "me.getBackgroundImage", "me.getDrafts"],
+          "system.maintain": [
+            "me.updateProfile",
+            "me.updatePrefs",
+            "me.updateBackgroundImage",
+            "me.updateDrafts",
+          ],
+          "system.all": ["me.updatePassword"],
+        },
+      },
+    ],
   },
 })
 export class MeRoutes {

@@ -1789,6 +1789,55 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
 
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.session.read", role: "session.read", parents: ["readonly"] },
+      {
+        id: "role.session.maintain",
+        role: "session.maintain",
+        children: ["session.read"],
+        parents: ["general"],
+      },
+      {
+        id: "role.session.all",
+        role: "session.all",
+        children: ["session.maintain"],
+        parents: ["system-maintainer"],
+      },
+      { id: "role.workspace.read", role: "workspace.read", parents: ["readonly"] },
+      {
+        id: "role.workspace.maintain",
+        role: "workspace.maintain",
+        children: ["workspace.read"],
+        parents: ["general"],
+      },
+      {
+        id: "role.workspace.all",
+        role: "workspace.all",
+        children: ["workspace.maintain"],
+        parents: ["system-maintainer"],
+      },
+      { id: "role.model.read", role: "model.read", parents: ["readonly"] },
+      {
+        id: "role.model.maintain",
+        role: "model.maintain",
+        children: ["model.read"],
+        parents: ["system-maintainer"],
+      },
+      {
+        id: "role.model.all",
+        role: "model.all",
+        children: ["model.maintain"],
+        parents: ["admin"],
+      },
+      { id: "role.vault.read", role: "vault.read", parents: ["system-maintainer"] },
+      { id: "role.vault.maintain", role: "vault.maintain", children: ["vault.read"] },
+      {
+        id: "role.vault.all",
+        role: "vault.all",
+        children: ["vault.maintain"],
+        parents: ["admin"],
+      },
+    ],
     "HttpModule.routes": [
       {
         id: "sessions.model-oauth-callback",
@@ -1861,6 +1910,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/sessions",
         auth: "user",
+        role: "session.read",
         order: 250,
       },
       {
@@ -1868,6 +1918,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/projects/:projectId/agents/:agentId/sessions",
         auth: "user",
+        role: "session.maintain",
         order: 250,
       },
       {
@@ -1875,6 +1926,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/projects/:projectId/sessions/batch",
         auth: "user",
+        role: "session.read",
         order: 255,
       },
       {
@@ -1882,6 +1934,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/projects/:projectId/sessions/archive",
         auth: "user",
+        role: "session.all",
         order: 256,
       },
       {
@@ -1895,6 +1948,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/projects/:projectId/workspace-files",
         auth: "user",
+        role: "workspace.read",
         order: 265,
       },
       {
@@ -1902,6 +1956,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/projects/:projectId/workspace-files/content",
         auth: "user",
+        role: "workspace.read",
         order: 265,
       },
       {
@@ -1909,6 +1964,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "PUT",
         prefix: "/api/projects/:projectId/workspace-files/content",
         auth: "user",
+        role: "workspace.maintain",
         order: 265,
       },
       {
@@ -1916,6 +1972,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "DELETE",
         prefix: "/api/projects/:projectId/workspace-files/content",
         auth: "user",
+        role: "workspace.all",
         order: 265,
       },
       {
@@ -1923,6 +1980,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/projects/:projectId/workspace-files/create",
         auth: "user",
+        role: "workspace.maintain",
         order: 265,
       },
       {
@@ -1930,6 +1988,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/projects/:projectId/workspace-files/move",
         auth: "user",
+        role: "workspace.maintain",
         order: 265,
       },
       {
@@ -1937,6 +1996,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/projects/:projectId/workspace-files/search",
         auth: "user",
+        role: "workspace.read",
         order: 265,
       },
       {
@@ -1944,6 +2004,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/projects/:projectId/workspace-files/reveal",
         auth: "user",
+        role: "workspace.maintain",
         order: 265,
       },
       {
@@ -1951,6 +2012,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -1958,6 +2020,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "PATCH",
         prefix: "/api/sessions/:sessionId",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -1965,6 +2028,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/fork",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -1972,6 +2036,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "DELETE",
         prefix: "/api/sessions/:sessionId",
         auth: "user",
+        role: "session.all",
         order: 270,
       },
       {
@@ -1979,6 +2044,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/scratchpad/:fileName",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -1986,6 +2052,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/trace-image",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -1993,6 +2060,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/messages",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2000,6 +2068,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/amsp",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2007,6 +2076,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/approvals",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2014,6 +2084,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/stream",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2021,6 +2092,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/tasks",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2028,6 +2100,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/steer",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2035,6 +2108,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "DELETE",
         prefix: "/api/sessions/:sessionId/steer/:steerId",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2042,6 +2116,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/subagents/:childSessionId/message",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2049,6 +2124,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/subagents/:childSessionId/abort",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2056,6 +2132,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "DELETE",
         prefix: "/api/sessions/:sessionId/follow-ups/:followUpId",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2063,6 +2140,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/interrupt",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2070,6 +2148,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/goal",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2077,6 +2156,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/approvals/:toolCallId",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2084,6 +2164,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/tool-calls/:toolCallId/background",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2091,6 +2172,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/abort",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2098,6 +2180,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/processes",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2105,6 +2188,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/processes/:processId/kill",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2112,6 +2196,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "DELETE",
         prefix: "/api/sessions/:sessionId/processes/:processId",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2119,6 +2204,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/retry-now",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2126,6 +2212,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/retry",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2133,6 +2220,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/compact",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2140,6 +2228,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/switch-model",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2147,6 +2236,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/files",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2154,6 +2244,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/files/content",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2161,6 +2252,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "PUT",
         prefix: "/api/sessions/:sessionId/files/content",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2168,6 +2260,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "DELETE",
         prefix: "/api/sessions/:sessionId/files/content",
         auth: "user",
+        role: "session.all",
         order: 270,
       },
       {
@@ -2175,6 +2268,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/files/create",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2182,6 +2276,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/files/move",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2189,6 +2284,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/files/search",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2196,6 +2292,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/files/reveal",
         auth: "user",
+        role: "session.maintain",
         order: 270,
       },
       {
@@ -2203,6 +2300,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/files/preview-redirect",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2210,6 +2308,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/sessions/:sessionId/files/stat",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2217,6 +2316,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/context",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2224,6 +2324,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/traces",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2231,6 +2332,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/traces/:index",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2238,6 +2340,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/sessions/:sessionId/traces/:index/analysis",
         auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2245,6 +2348,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/me/archived-sessions/groups",
         auth: "user",
+        role: "session.read",
         order: 275,
       },
       {
@@ -2252,6 +2356,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/me/archived-sessions",
         auth: "user",
+        role: "session.read",
         order: 275,
       },
       {
@@ -2259,6 +2364,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/me/archived-sessions/unarchive",
         auth: "user",
+        role: "session.maintain",
         order: 275,
       },
       {
@@ -2266,7 +2372,138 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/me/archived-sessions/delete",
         auth: "user",
+        role: "session.all",
         order: 275,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "sessions.bindings",
+        endpoints: {
+          "sessions.models": {
+            "GET /": "model.list",
+            "PUT /": "model.update",
+            "PUT /providers/:provider": "model.updateProvider",
+            "POST /sync-presets": "model.syncPresets",
+            "GET /balance": "model.getBalance",
+            "PUT /default": "model.setDefault",
+            "POST /test": "model.test",
+            "POST /detect": "model.detect",
+            "POST /list": "model.listRemote",
+            "POST /detect-vision": "model.detectVision",
+          },
+          "sessions.model-oauth": {
+            "GET /": "model.oauth.list",
+            "POST /start": "model.oauth.start",
+            "POST /:flowId/code": "model.oauth.submitCode",
+            "GET /:flowId": "model.oauth.getStatus",
+          },
+          "sessions.platform-auth": {
+            "POST /start": "model.platformAuth.start",
+            "POST /sync": "model.platformAuth.sync",
+            "GET /:flowId/status": "model.platformAuth.getStatus",
+            "POST /:flowId/retry": "model.platformAuth.retry",
+            "POST /:flowId/cancel": "model.platformAuth.cancel",
+          },
+          "sessions.modelscope-auth": {
+            "POST /start": "model.modelscopeAuth.start",
+            "GET /:flowId/status": "model.modelscopeAuth.getStatus",
+            "POST /:flowId/retry": "model.modelscopeAuth.retry",
+            "POST /:flowId/cancel": "model.modelscopeAuth.cancel",
+          },
+          "sessions.chat-defaults": {
+            "GET /": "model.chatDefaults.get",
+            "PUT /": "model.chatDefaults.update",
+          },
+          "sessions.command-policy": {
+            "GET /": "project.commandPolicy.get",
+            "PUT /": "project.commandPolicy.update",
+          },
+          "sessions.agents": {
+            "GET /": "agent.list",
+            "POST /": "agent.create",
+            "DELETE /:agentId": "agent.delete",
+            "GET /:agentId/auth": "agent.auth.get",
+            "PUT /:agentId/auth": "agent.auth.update",
+          },
+          "sessions.agent-deletions": {
+            "GET /:deletionId": "agent.getDeletion",
+          },
+          "sessions.agent-config": {
+            "GET /": "agent.config.get",
+            "PUT /": "agent.config.update",
+            "POST /mcp-test": "agent.config.mcpTest",
+            "POST /kernel-update": "agent.config.kernelUpdate",
+            "POST /reset": "agent.config.reset",
+          },
+          "sessions.vault": {
+            "GET /": "vault.get",
+            "PUT /": "vault.update",
+            "PUT /entries/:key": "vault.setEntry",
+            "DELETE /entries/:key": "vault.deleteEntry",
+            "POST /template-placeholder": "vault.templatePlaceholder",
+          },
+          "sessions.usage": {
+            "GET /": "usage.get",
+            "GET /model-totals": "usage.getModelTotals",
+            "GET /errors": "usage.listErrors",
+            "DELETE /errors": "usage.clearErrors",
+          },
+        },
+        bindings: {
+          "model.read": [
+            "model.list",
+            "model.getBalance",
+            "model.test",
+            "model.detect",
+            "model.listRemote",
+            "model.detectVision",
+            "model.oauth.list",
+            "model.oauth.getStatus",
+            "model.platformAuth.getStatus",
+            "model.modelscopeAuth.getStatus",
+            "model.chatDefaults.get",
+          ],
+          "model.maintain": [
+            "model.setDefault",
+            "model.syncPresets",
+            "model.platformAuth.sync",
+            "model.chatDefaults.update",
+          ],
+          "model.all": [
+            "model.update",
+            "model.updateProvider",
+            "model.oauth.start",
+            "model.oauth.submitCode",
+            "model.platformAuth.start",
+            "model.platformAuth.retry",
+            "model.platformAuth.cancel",
+            "model.modelscopeAuth.start",
+            "model.modelscopeAuth.retry",
+            "model.modelscopeAuth.cancel",
+          ],
+          "vault.read": ["vault.get"],
+          "vault.maintain": ["vault.update", "vault.setEntry", "vault.templatePlaceholder"],
+          "vault.all": ["vault.deleteEntry"],
+          "agent.read": [
+            "agent.list",
+            "agent.getDeletion",
+            "agent.auth.get",
+            "agent.config.get",
+          ],
+          "agent.maintain": [
+            "agent.create",
+            "agent.config.update",
+            "agent.config.mcpTest",
+            "agent.config.kernelUpdate",
+          ],
+          "agent.all": ["agent.delete", "agent.config.reset"],
+          "admin.maintain": ["agent.auth.update"],
+          "project.read": ["project.commandPolicy.get"],
+          "project.all": ["project.commandPolicy.update"],
+          "trace.read": ["usage.get", "usage.getModelTotals", "usage.listErrors"],
+          "trace.all": ["usage.clearErrors"],
+        },
       },
     ],
   },

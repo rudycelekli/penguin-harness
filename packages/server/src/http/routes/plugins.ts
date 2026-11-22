@@ -372,6 +372,16 @@ export function agentMcpServersRoutes(deps: PluginsRouteDeps): Hono<AppEnv> {
 /** The plugin library and the Agent-scoped install/uninstall groups, as one route component. */
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.plugin.read", role: "plugin.read", parents: ["readonly"] },
+      { id: "role.plugin.maintain", role: "plugin.maintain", children: ["plugin.read"] },
+      {
+        id: "role.plugin.all",
+        role: "plugin.all",
+        children: ["plugin.maintain"],
+        parents: ["system-maintainer"],
+      },
+    ],
     "HttpModule.routes": [
       { id: "plugins.library", prefix: "/api/plugins", auth: "user", order: 70 },
       {
@@ -391,6 +401,52 @@ export function agentMcpServersRoutes(deps: PluginsRouteDeps): Hono<AppEnv> {
         prefix: "/api/projects/:projectId/agents/:agentId/mcp-servers",
         auth: "user",
         order: 226,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "plugins.bindings",
+        endpoints: {
+          "plugins.library": {
+            "GET /": "plugin.library.list",
+            "GET /:plugin/files": "plugin.library.listFiles",
+            "GET /:plugin/readme": "plugin.library.getReadme",
+            "GET /:plugin/archive": "plugin.library.getArchive",
+            "GET /:plugin/icon": "plugin.library.getIcon",
+          },
+          "plugins.agent-plugins": {
+            "GET /": "plugin.agent.list",
+            "POST /": "plugin.agent.install",
+            "DELETE /:name": "plugin.agent.uninstall",
+          },
+          "plugins.agent-hooks": {
+            "GET /": "plugin.hook.list",
+            "POST /archive": "plugin.hook.importArchive",
+            "GET /:name/archive": "plugin.hook.exportArchive",
+            "GET /:name/icon": "plugin.hook.getIcon",
+            "DELETE /:name": "plugin.hook.delete",
+          },
+          "plugins.agent-mcp-servers": {
+            "GET /": "plugin.mcp.list",
+            "DELETE /:name": "plugin.mcp.delete",
+          },
+        },
+        bindings: {
+          "plugin.read": [
+            "plugin.library.list",
+            "plugin.library.listFiles",
+            "plugin.library.getReadme",
+            "plugin.library.getArchive",
+            "plugin.library.getIcon",
+            "plugin.agent.list",
+            "plugin.hook.list",
+            "plugin.hook.exportArchive",
+            "plugin.hook.getIcon",
+            "plugin.mcp.list",
+          ],
+          "plugin.maintain": ["plugin.agent.install", "plugin.hook.importArchive"],
+          "plugin.all": ["plugin.agent.uninstall", "plugin.hook.delete", "plugin.mcp.delete"],
+        },
       },
     ],
   },
@@ -680,6 +736,13 @@ function resolveRegistries(options: PluginRoutesOptions): PluginRegistry[] {
         prefix: "/api/plugins/registry",
         auth: "user",
         order: 69,
+        endpoints: {
+          "GET /": "plugin.registry.list",
+          "GET /icon": "plugin.registry.getIcon",
+          "GET /readme": "plugin.registry.getReadme",
+          "GET /archive": "plugin.registry.getArchive",
+        },
+        role: "plugin.read",
       },
     ],
   },

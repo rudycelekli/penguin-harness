@@ -3631,6 +3631,21 @@ export abstract class Machines extends Interface<
 
 @Module({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.machine.read", role: "machine.read", parents: ["readonly"] },
+      {
+        id: "role.machine.maintain",
+        role: "machine.maintain",
+        children: ["machine.read"],
+        parents: ["system-maintainer"],
+      },
+      {
+        id: "role.machine.all",
+        role: "machine.all",
+        children: ["machine.maintain"],
+        parents: ["admin"],
+      },
+    ],
     "HttpModule.routes": [
       {
         id: "machines",
@@ -3645,6 +3660,71 @@ export abstract class Machines extends Interface<
         prefix: "/server/",
         auth: "user",
         order: 51,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "machines.bindings",
+        endpoints: {
+          machines: {
+            "GET /": "machine.list",
+            "GET /events": "machine.events",
+            "POST /use": "machine.use",
+            "POST /stop-using": "machine.stopUsing",
+            "GET /ssh-hosts": "machine.listSshHosts",
+            "POST /ssh-hosts": "machine.createSshHost",
+            "GET /ssh-hosts/:alias": "machine.getSshHost",
+            "PUT /ssh-hosts/:alias": "machine.updateSshHost",
+            "POST /add": "machine.add",
+            "POST /probe": "machine.probe",
+            "POST /:machineId/install": "machine.install",
+            "POST /:machineId/connect": "machine.connect",
+            "POST /:machineId/reconnect": "machine.reconnect",
+            "POST /:machineId/stop-reconnecting": "machine.stopReconnecting",
+            "GET /:machineId/dirs": "machine.listDirs",
+            "POST /:machineId/release": "machine.release",
+            "POST /:machineId/restart": "machine.restart",
+            "POST /:machineId/stop": "machine.stop",
+            "POST /:machineId/uninstall": "machine.uninstall",
+            "POST /:machineId/sync": "machine.sync",
+            "POST /:machineId/diagnose": "machine.diagnose",
+            "POST /:machineId/disconnect": "machine.disconnect",
+          },
+          "machines.server-proxy": {
+            "ALL /*": "machine.proxy",
+          },
+        },
+        bindings: {
+          "machine.read": [
+            "machine.list",
+            "machine.events",
+            "machine.listSshHosts",
+            "machine.getSshHost",
+            "machine.listDirs",
+            "machine.probe",
+            "machine.diagnose",
+          ],
+          "machine.maintain": [
+            "machine.use",
+            "machine.stopUsing",
+            "machine.connect",
+            "machine.reconnect",
+            "machine.stopReconnecting",
+            "machine.disconnect",
+            "machine.restart",
+            "machine.stop",
+            "machine.sync",
+          ],
+          "machine.all": [
+            "machine.add",
+            "machine.createSshHost",
+            "machine.updateSshHost",
+            "machine.install",
+            "machine.uninstall",
+            "machine.release",
+            "machine.proxy",
+          ],
+        },
       },
     ],
   },

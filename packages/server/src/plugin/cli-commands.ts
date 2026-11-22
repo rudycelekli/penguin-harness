@@ -501,6 +501,21 @@ export function pluginCliCommandRoutes(deps: PluginCliCommandRouteDeps): Hono<Ap
         order: 66,
       },
     ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "cli.commands.bindings",
+        endpoints: {
+          "cli.commands": {
+            "GET /": "cli.commands.list",
+            "POST /run": "cli.commands.run",
+          },
+        },
+        bindings: {
+          "command.read": ["cli.commands.list"],
+          "command.all": ["cli.commands.run"],
+        },
+      },
+    ],
   },
 })
 export class PluginCliCommandsProvider {

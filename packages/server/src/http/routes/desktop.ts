@@ -247,6 +247,27 @@ export class DesktopRoutes {
     "HttpModule.routes": [
       { id: "desktop.update", prefix: "/api/desktop/update", auth: "user", order: 10 },
     ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "desktop.update.bindings",
+        endpoints: {
+          "desktop.update": {
+            "GET /": "desktop.update.get",
+            "POST /check": "desktop.update.check",
+            "POST /download": "desktop.update.download",
+            "POST /install": "desktop.update.install",
+          },
+        },
+        bindings: {
+          "system.read": ["desktop.update.get"],
+          "system.all": [
+            "desktop.update.check",
+            "desktop.update.download",
+            "desktop.update.install",
+          ],
+        },
+      },
+    ],
   },
 })
 export class DesktopUpdateRoutes {
@@ -261,6 +282,21 @@ export class DesktopUpdateRoutes {
   contributes: {
     "HttpModule.routes": [
       { id: "desktop.tray", prefix: "/api/desktop/tray", auth: "user", order: 10 },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "desktop.tray.bindings",
+        endpoints: {
+          "desktop.tray": {
+            "GET /": "desktop.tray.get",
+            "PUT /": "desktop.tray.update",
+          },
+        },
+        bindings: {
+          "system.read": ["desktop.tray.get"],
+          "system.maintain": ["desktop.tray.update"],
+        },
+      },
     ],
   },
 })
@@ -280,6 +316,8 @@ export class DesktopTrayRoutes {
         prefix: "/api/desktop/privacy-settings",
         auth: "user",
         order: 10,
+        endpoints: { "POST /": "desktop.privacy.open" },
+        role: "system.all",
       },
     ],
   },
@@ -295,7 +333,14 @@ export class DesktopPrivacySettingsRoutes {
 @Component({
   contributes: {
     "HttpModule.routes": [
-      { id: "desktop.window", prefix: "/api/desktop/window", auth: "user", order: 10 },
+      {
+        id: "desktop.window",
+        prefix: "/api/desktop/window",
+        auth: "user",
+        order: 10,
+        endpoints: { "POST /": "desktop.window.action" },
+        role: "system.maintain",
+      },
     ],
   },
 })

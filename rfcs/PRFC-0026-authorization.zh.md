@@ -95,7 +95,7 @@ Server 启动时在数据根下写入权限为 `0600` 的 `api-token` 与 `serve
 
 ### 可扩展角色注册表（`RoleRegistry`）与 `roles`、`roleBindings` 槽
 
-角色树与路由授权映射全部通过模块声明式贡献组装（内置角色树与路由绑定同样由 `BuiltinAuthRoles` 组件以贡献方式提供，与业务模块及外部插件使用同一机制）：
+角色树与路由授权映射全部通过模块声明式贡献组装（`AgentAuthPermissionProvider` 仅贡献六个顶层复合角色，各业务域的角色节点、路由 `role` 声明与 `roleBindings` 均由所属业务组件及外部插件各自贡献）：
 
 1. **角色节点贡献（`HttpModule.roles` / `AgentAuthPermissionProvider.roles`）**：组件通过贡献 `RoleContribution` 条目按并集方式定义新角色节点或扩展既有角色：
 

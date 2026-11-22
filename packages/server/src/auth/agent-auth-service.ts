@@ -188,7 +188,33 @@ interface CachedAgentGrant {
 }
 
 /** Derives and caches the grant from the Agent's CURRENT generation row — the one reader of the pair. */
-@Component()
+@Component({
+  contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.none", role: "none" },
+      { id: "role.readonly", role: "readonly" },
+      { id: "role.general", role: "general", children: ["readonly"] },
+      {
+        id: "role.system-maintainer",
+        role: "system-maintainer",
+        children: ["general"],
+        flags: { allEndpoints: false, agentApi: true },
+      },
+      {
+        id: "role.admin",
+        role: "admin",
+        children: ["system-maintainer"],
+        flags: { allEndpoints: true, agentApi: false },
+      },
+      {
+        id: "role.full-permissions",
+        role: "full-permissions",
+        children: ["admin"],
+        flags: { allEndpoints: true, agentApi: true },
+      },
+    ],
+  },
+})
 export class AgentAuthPermissionProvider implements AgentAuthPermissions {
   @Use() private readonly authRoleSessions!: AuthRoleSessions;
   private readonly roleRegistry = new RoleRegistry();
@@ -203,7 +229,7 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
         }>
       | undefined;
     if (roles !== undefined) {
-      this.roleRegistry.registerRoles(roles);
+      for (const r of roles) this.roleRegistry.registerRole(r.id, r.data ?? r, r.from);
     }
     const roleBindings = contributions.roleBindings as
       | ReadonlyArray<{
@@ -213,7 +239,7 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
         }>
       | undefined;
     if (roleBindings !== undefined) {
-      this.roleRegistry.registerRoleBindings(roleBindings);
+      for (const rb of roleBindings) this.roleRegistry.registerRoleBinding(rb.data ?? rb, rb.from);
     }
   }
 

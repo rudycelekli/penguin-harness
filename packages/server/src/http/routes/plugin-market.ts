@@ -132,7 +132,7 @@ function reseed(parked: unknown): MarketSnapshot | null {
         order: 68,
         endpoints: {
           "GET /": "plugin.market.get",
-          "GET /asset": "plugin.market.asset",
+          "GET /asset": "plugin.market.getAsset",
         },
         role: "plugin.read",
       },

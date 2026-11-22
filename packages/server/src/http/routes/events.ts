@@ -52,6 +52,8 @@ export function eventsRoutes(deps: EventsRouteDeps): Hono<AppEnv> {
         prefix: "/api/events",
         auth: "user",
         order: 60,
+        endpoints: { "GET /": "events.stream" },
+        role: "system.read",
       },
     ],
   },

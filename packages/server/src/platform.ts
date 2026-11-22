@@ -75,7 +75,6 @@ import { UsersRepo } from "@prismshadow/penguin-library-auth/repos/users";
 import { AuthSessionsRepo } from "@prismshadow/penguin-library-auth/repos/auth-sessions";
 import { AuthRoleSessionsRepo } from "./db/repos/auth-role-sessions.js";
 import { AgentAuthService, AgentAuthPermissionProvider } from "./auth/agent-auth-service.js";
-import { BuiltinAuthRoles } from "./auth/builtin-roles.js";
 import { AuthSelfRefiner, AuthWithAskRefiner } from "./auth/auth-refiners.js";
 import {
   AgentAuth,
@@ -354,7 +353,6 @@ export class RuntimeModule {}
     UsersRepo,
     AuthSessionsRepo,
     AuthRoleSessionsRepo,
-    BuiltinAuthRoles,
     AgentAuthService,
     AgentAuthPermissionProvider,
     ScryptHasher,

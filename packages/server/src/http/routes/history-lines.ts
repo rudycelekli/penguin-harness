@@ -174,6 +174,7 @@ import { endpointOf } from "../app.js";
         method: "GET",
         prefix: "/api/sessions/:sessionId/history-lines",
         auth: "user",
+        role: "session.read",
         order: 272,
       },
       {
@@ -181,6 +182,7 @@ import { endpointOf } from "../app.js";
         method: "GET",
         prefix: "/api/sessions/:sessionId/trace-body",
         auth: "user",
+        role: "session.read",
         order: 272,
       },
     ],

@@ -12,6 +12,7 @@ import { AgentAuthService, AgentAuthPermissionProvider } from "../src/auth/agent
 import {
   AGENT_AUTH_ROLES,
   ALL_HTTP_ROUTE_IDS,
+  DEFAULT_ROLE_REGISTRY,
   ROLE_TREE,
   RoleRegistry,
   expandRoleGrant,
@@ -934,5 +935,25 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
       agentId: "a2",
       itemId: "item-99",
     });
+  });
+
+  it("attributes built-in domain roles and routes to their owning domain components rather than a central role table", () => {
+    expect(DEFAULT_ROLE_REGISTRY.getRoleSourceModules("session.maintain")).toContain("SessionApiRoutes");
+    expect(DEFAULT_ROLE_REGISTRY.getRoleSourceModules("agent.maintain")).toContain("AgentRoutes");
+    expect(DEFAULT_ROLE_REGISTRY.getRoleSourceModules("org.maintain")).toContain("OrgRoutes");
+    expect(DEFAULT_ROLE_REGISTRY.getRoleSourceModules("schedule.maintain")).toContain("SchedulerRoutes");
+    expect(DEFAULT_ROLE_REGISTRY.getRoleSourceModules("plugin.maintain")).toContain("PluginRoutes");
+    expect(DEFAULT_ROLE_REGISTRY.getRoleSourceModules("workbench.maintain")).toContain("WorkbenchRoutes");
+    expect(DEFAULT_ROLE_REGISTRY.getRoleSourceModules("admin.all")).toContain("AdminRoutes");
+
+    const sessionFailure = DEFAULT_ROLE_REGISTRY.describeRouteAuthFailure("session.delete", "session.read");
+    expect(sessionFailure.sourceModule).toBe("SessionApiRoutes");
+    expect(sessionFailure.routeSourceModule).toBe("SessionApiRoutes");
+    expect(sessionFailure.bindingSourceModules).toContain("SessionApiRoutes");
+
+    const orgFailure = DEFAULT_ROLE_REGISTRY.describeRouteAuthFailure("org.create", "org.read", "org");
+    expect(orgFailure.sourceModule).toBe("OrgRoutes");
+    expect(orgFailure.routeSourceModule).toBe("OrgRoutes");
+    expect(orgFailure.bindingSourceModules).toContain("OrgRoutes");
   });
 });

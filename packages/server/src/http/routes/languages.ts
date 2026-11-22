@@ -45,6 +45,11 @@ export function languageRoutes(languages: () => Languages): Hono<AppEnv> {
         prefix: "/api/languages",
         auth: "user",
         order: 70,
+        endpoints: {
+          "GET /": "languages.list",
+          "GET /:id/grammar": "languages.getGrammar",
+        },
+        role: "system.read",
       },
     ],
   },

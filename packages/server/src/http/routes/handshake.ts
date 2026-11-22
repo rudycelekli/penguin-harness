@@ -46,8 +46,25 @@ export function handshakeRoutes(deps: { identity: () => Promise<HandshakeAnswer>
  */
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.system.read", role: "system.read", parents: ["readonly"] },
+      { id: "role.system.maintain", role: "system.maintain", children: ["system.read"] },
+      {
+        id: "role.system.all",
+        role: "system.all",
+        children: ["system.maintain"],
+        parents: ["admin"],
+      },
+    ],
     "HttpModule.routes": [
-      { id: "handshake", prefix: "/api/handshake", auth: "user", order: 21 },
+      {
+        id: "handshake",
+        prefix: "/api/handshake",
+        auth: "user",
+        order: 21,
+        endpoints: { "GET /": "handshake.get" },
+        role: "system.read",
+      },
     ],
   },
 })

@@ -333,6 +333,21 @@ async function readItem(
 
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.schedule.read", role: "schedule.read", parents: ["readonly"] },
+      {
+        id: "role.schedule.maintain",
+        role: "schedule.maintain",
+        children: ["schedule.read"],
+        parents: ["general@self"],
+      },
+      {
+        id: "role.schedule.all",
+        role: "schedule.all",
+        children: ["schedule.maintain"],
+        parents: ["system-maintainer"],
+      },
+    ],
     "HttpModule.routes": [
       {
         id: "schedules",
@@ -345,6 +360,33 @@ async function readItem(
         prefix: "/api/projects/:projectId/schedules",
         auth: "user",
         order: 200,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "schedules.bindings",
+        endpoints: {
+          schedules: {
+            "GET /": "schedule.list",
+            "POST /": "schedule.create",
+            "POST /template-placeholder": "schedule.templatePlaceholder",
+            "GET /:name": "schedule.get",
+            "PUT /:name": "schedule.update",
+            "DELETE /:name": "schedule.delete",
+          },
+          "schedules.project-routes": {
+            "GET /": "schedule.listProject",
+          },
+        },
+        bindings: {
+          "schedule.read": ["schedule.list", "schedule.get", "schedule.listProject"],
+          "schedule.maintain": [
+            "schedule.create",
+            "schedule.templatePlaceholder",
+            "schedule.update",
+          ],
+          "schedule.all": ["schedule.delete"],
+        },
       },
     ],
   },

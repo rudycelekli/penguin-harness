@@ -71,6 +71,16 @@ export function projectsRoutes(deps: ProjectsRouteDeps): Hono<AppEnv> {
 
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.project.read", role: "project.read", parents: ["readonly"] },
+      { id: "role.project.maintain", role: "project.maintain", children: ["project.read"] },
+      {
+        id: "role.project.all",
+        role: "project.all",
+        children: ["project.maintain"],
+        parents: ["admin"],
+      },
+    ],
     "HttpModule.routes": [
       {
         id: "projects",
@@ -83,6 +93,29 @@ export function projectsRoutes(deps: ProjectsRouteDeps): Hono<AppEnv> {
         prefix: "/api/projects/:projectId/members",
         auth: "user",
         order: 90,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "projects.bindings",
+        endpoints: {
+          projects: {
+            "GET /": "project.list",
+            "POST /": "project.create",
+            "PATCH /:projectId": "project.update",
+            "DELETE /:projectId": "project.delete",
+          },
+          "projects.members": {
+            "GET /": "project.member.list",
+            "POST /": "project.member.add",
+            "DELETE /:userId": "project.member.remove",
+          },
+        },
+        bindings: {
+          "project.read": ["project.list", "project.member.list"],
+          "project.maintain": ["project.create", "project.update", "project.member.add"],
+          "project.all": ["project.delete", "project.member.remove"],
+        },
       },
     ],
   },

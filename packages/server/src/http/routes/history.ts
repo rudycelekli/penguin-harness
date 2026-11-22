@@ -154,6 +154,7 @@ import { endpointOf } from "../app.js";
         method: "GET",
         prefix: "/api/sessions/:sessionId/history",
         auth: "user",
+        role: "session.read",
         order: 269,
       },
     ],

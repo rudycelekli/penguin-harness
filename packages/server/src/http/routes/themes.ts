@@ -167,6 +167,25 @@ export function themeRoutes(deps: ThemeRouteDeps): Hono<AppEnv> {
         order: 10,
       },
     ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "themes.bindings",
+        endpoints: {
+          themes: {
+            "GET /": "themes.list",
+            "GET /:id/files/*": "themes.getFile",
+            "POST /": "themes.create",
+            "DELETE /:id": "themes.delete",
+            "GET /:id/export": "themes.export",
+          },
+        },
+        bindings: {
+          "system.read": ["themes.list", "themes.getFile", "themes.export"],
+          "system.maintain": ["themes.create"],
+          "system.all": ["themes.delete"],
+        },
+      },
+    ],
   },
 })
 export class ThemeRoutes {

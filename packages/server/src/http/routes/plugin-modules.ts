@@ -131,7 +131,7 @@ export function adminPluginModuleRoutes(deps: PluginModuleRoutesDeps): Hono<AppE
         id: "PluginModuleRoutes.bindings",
         endpoints: {
           "PluginModuleRoutes.project": {
-            "POST /": "plugin.project.requestModule",
+            "POST /": "plugin.modules.request",
           },
           "PluginModuleRoutes.admin": {
             "GET /": "admin.pluginModules.list",
@@ -139,7 +139,7 @@ export function adminPluginModuleRoutes(deps: PluginModuleRoutesDeps): Hono<AppE
           },
         },
         bindings: {
-          "plugin.maintain": ["plugin.project.requestModule"],
+          "plugin.maintain": ["plugin.modules.request"],
           "admin.read": ["admin.pluginModules.list"],
           "admin.maintain": ["admin.pluginModules.decide"],
         },

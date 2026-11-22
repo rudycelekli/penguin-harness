@@ -283,9 +283,21 @@ export function toolModelBindingsOver(
         auth: "user",
         // Before the models group (100), whose prefix is this one's parent.
         order: 99,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "ToolModelBindingsProvider.bindings",
         endpoints: {
-          "GET /": "model.toolBindings.list",
-          "PUT /:key": "model.toolBindings.set",
+          "ToolModelBindingsProvider.routes": {
+            "GET /": "model.toolBindings.list",
+            "PATCH /": "model.toolBindings.update",
+            "PUT /:key": "model.toolBindings.update",
+          },
+        },
+        bindings: {
+          "model.read": ["model.toolBindings.list"],
+          "model.maintain": ["model.toolBindings.update"],
         },
       },
     ],

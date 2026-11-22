@@ -806,6 +806,21 @@ export function appCenterRoutes(deps: AppCenterRouteDeps) {
 
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.workbench.read", role: "workbench.read", parents: ["readonly"] },
+      {
+        id: "role.workbench.maintain",
+        role: "workbench.maintain",
+        children: ["workbench.read"],
+        parents: ["general@self"],
+      },
+      {
+        id: "role.workbench.all",
+        role: "workbench.all",
+        children: ["workbench.maintain"],
+        parents: ["system-maintainer"],
+      },
+    ],
     "HttpModule.routes": [
       {
         id: "workbenches.manifest",
@@ -824,6 +839,59 @@ export function appCenterRoutes(deps: AppCenterRouteDeps) {
         prefix: "/api/projects/:projectId/app-center",
         auth: "user",
         order: 20,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "workbenches.bindings",
+        endpoints: {
+          workbenches: {
+            "GET /": "workbench.list",
+            "PUT /enabled": "workbench.setAllEnabled",
+            "PUT /:id/enabled": "workbench.setEnabled",
+            "POST /archive": "workbench.importArchive",
+            "GET /:id/archive": "workbench.exportArchive",
+            "POST /:id/reload": "workbench.reload",
+            "GET /:id/history": "workbench.getHistory",
+            "POST /:id/rollback": "workbench.rollback",
+            "PATCH /:id/sidebar": "workbench.updateSidebar",
+            "PATCH /:id/app-center": "workbench.updateAppCenter",
+            "GET /:id/app-center/icon": "workbench.getAppCenterIcon",
+            "DELETE /:id": "workbench.delete",
+            "GET /:id/ui/*": "workbench.serveUi",
+            "GET /:id/sdk/ui/*": "workbench.serveSdkUi",
+            "GET /:id/sdk/:file": "workbench.serveSdkFile",
+            "ALL /:id/api/*": "workbench.callApi",
+          },
+          "workbenches.app-center": {
+            "GET /": "workbench.appCenter.list",
+            "PUT /layout": "workbench.appCenter.updateLayout",
+          },
+        },
+        bindings: {
+          "workbench.read": [
+            "workbench.list",
+            "workbench.exportArchive",
+            "workbench.getHistory",
+            "workbench.getAppCenterIcon",
+            "workbench.serveUi",
+            "workbench.serveSdkUi",
+            "workbench.serveSdkFile",
+            "workbench.appCenter.list",
+          ],
+          "workbench.maintain": [
+            "workbench.setAllEnabled",
+            "workbench.setEnabled",
+            "workbench.importArchive",
+            "workbench.reload",
+            "workbench.rollback",
+            "workbench.updateSidebar",
+            "workbench.updateAppCenter",
+            "workbench.callApi",
+            "workbench.appCenter.updateLayout",
+          ],
+          "workbench.all": ["workbench.delete"],
+        },
       },
     ],
   },

@@ -132,6 +132,8 @@ export function suggestIdRoutes(deps: SuggestIdRouteDeps): Hono<AppEnv> {
         prefix: "/api/projects/:projectId/suggest-id",
         auth: "user",
         order: 146,
+        endpoints: { "POST /": "project.suggestId" },
+        role: "project.read",
       },
     ],
   },

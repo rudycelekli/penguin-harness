@@ -95,12 +95,28 @@ import { endpointOf } from "../app.js";
  */
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.command.read", role: "command.read", parents: ["readonly"] },
+      {
+        id: "role.command.maintain",
+        role: "command.maintain",
+        children: ["command.read"],
+        parents: ["general"],
+      },
+      {
+        id: "role.command.all",
+        role: "command.all",
+        children: ["command.maintain"],
+        parents: ["admin"],
+      },
+    ],
     "HttpModule.routes": [
       {
         id: "command.list",
         method: "GET",
         prefix: "/api/command",
         auth: "user",
+        role: "command.read",
         order: 10,
       },
       {
@@ -108,6 +124,7 @@ import { endpointOf } from "../app.js";
         method: "POST",
         prefix: "/api/command/:command",
         auth: "user",
+        role: "command.maintain",
         order: 10,
       },
     ],

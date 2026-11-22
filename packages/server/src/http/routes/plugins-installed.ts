@@ -1013,6 +1013,31 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
         order: 60,
       },
     ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "installed-plugins.bindings",
+        endpoints: {
+          "installed-plugins": {
+            "GET /": "plugin.installed.list",
+            "POST /": "plugin.installed.install",
+            "POST /link": "plugin.installed.link",
+            "POST /archive": "plugin.installed.importArchive",
+            "PUT /": "plugin.installed.setEnabled",
+            "DELETE /": "plugin.installed.uninstall",
+          },
+        },
+        bindings: {
+          "plugin.read": ["plugin.installed.list"],
+          "plugin.maintain": [
+            "plugin.installed.install",
+            "plugin.installed.link",
+            "plugin.installed.importArchive",
+            "plugin.installed.setEnabled",
+          ],
+          "plugin.all": ["plugin.installed.uninstall"],
+        },
+      },
+    ],
   },
 })
 export class InstalledPluginRoutes {

@@ -169,6 +169,35 @@ export abstract class UpdateCheck extends Interface<Pick<UpdateCheckService, "ch
         order: 20,
       },
     ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "version.bindings",
+        endpoints: {
+          version: {
+            "GET /": "version.get",
+            "GET /history": "version.listHistory",
+            "GET /history/ifaces/:hash": "version.getHistoryIfaces",
+            "GET /history/diff": "version.getHistoryDiff",
+            "POST /history/rollback": "version.rollback",
+            "GET /update-check": "version.getUpdateCheck",
+            "GET /update": "version.getUpdate",
+            "POST /update": "version.startUpdate",
+            "POST /restart": "version.restart",
+          },
+        },
+        bindings: {
+          "system.read": [
+            "version.get",
+            "version.listHistory",
+            "version.getHistoryIfaces",
+            "version.getHistoryDiff",
+            "version.getUpdateCheck",
+            "version.getUpdate",
+          ],
+          "system.all": ["version.rollback", "version.startUpdate", "version.restart"],
+        },
+      },
+    ],
   },
 })
 export class VersionRoutes {

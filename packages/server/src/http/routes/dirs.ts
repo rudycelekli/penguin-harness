@@ -255,6 +255,25 @@ export function normalizeRequestedDir(requested: string, platform: string): stri
         order: 160,
       },
     ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "projects.dirs.bindings",
+        endpoints: {
+          "projects.dirs": {
+            "GET /": "project.dir.list",
+            "POST /access": "project.dir.checkAccess",
+          },
+          "projects.dir-skills": {
+            "GET /": "skill.listDir",
+            "GET /icon": "skill.getDirIcon",
+          },
+        },
+        bindings: {
+          "project.read": ["project.dir.list", "project.dir.checkAccess"],
+          "skill.read": ["skill.listDir", "skill.getDirIcon"],
+        },
+      },
+    ],
   },
 })
 export class ProjectsRoutes {

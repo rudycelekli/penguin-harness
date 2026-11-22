@@ -89,6 +89,8 @@ export interface WebShellSlots {
         prefix: "/api/contributions",
         auth: "user",
         order: 65,
+        endpoints: { "GET /": "web.contributions.list" },
+        role: "system.read",
       },
     ],
   },

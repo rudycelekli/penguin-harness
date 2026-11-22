@@ -66,6 +66,16 @@ export function adminUsersRoutes(deps: AdminRouteDeps): Hono<AppEnv> {
 
 @Component({
   contributes: {
+    "AgentAuthPermissionProvider.roles": [
+      { id: "role.admin.read", role: "admin.read" },
+      { id: "role.admin.maintain", role: "admin.maintain", children: ["admin.read"] },
+      {
+        id: "role.admin.all",
+        role: "admin.all",
+        children: ["admin.maintain"],
+        parents: ["admin"],
+      },
+    ],
     "HttpModule.routes": [
       {
         id: "admin.users",
@@ -84,6 +94,49 @@ export function adminUsersRoutes(deps: AdminRouteDeps): Hono<AppEnv> {
         prefix: "/api/admin/plugin-config",
         auth: "user",
         order: 45,
+      },
+    ],
+    "AgentAuthPermissionProvider.roleBindings": [
+      {
+        id: "admin.bindings",
+        endpoints: {
+          "admin.users": {
+            "GET /": "admin.users.list",
+            "POST /": "admin.users.create",
+            "POST /:userId/password": "admin.users.setPassword",
+            "DELETE /:userId": "admin.users.delete",
+          },
+          "admin.settings": {
+            "GET /": "admin.settings.get",
+            "PUT /": "admin.settings.update",
+            "GET /proxy-probe": "admin.settings.listProxyProbes",
+            "POST /proxy-probe/:provider": "admin.settings.runProxyProbe",
+          },
+          "admin.plugin-config": {
+            "GET /": "admin.pluginConfig.get",
+            "PUT /": "admin.pluginConfig.update",
+            "POST /action": "admin.pluginConfig.action",
+          },
+        },
+        bindings: {
+          "admin.read": [
+            "admin.users.list",
+            "admin.settings.get",
+            "admin.settings.listProxyProbes",
+            "admin.pluginConfig.get",
+          ],
+          "admin.maintain": [
+            "admin.settings.update",
+            "admin.settings.runProxyProbe",
+            "admin.pluginConfig.update",
+            "admin.pluginConfig.action",
+          ],
+          "admin.all": [
+            "admin.users.create",
+            "admin.users.setPassword",
+            "admin.users.delete",
+          ],
+        },
       },
     ],
   },

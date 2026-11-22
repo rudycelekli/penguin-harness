@@ -42,6 +42,8 @@ import { agentApiTryRoutes } from "./try-route.js";
         prefix: "/api/projects/:projectId/agents/:agentId/api/try",
         auth: "user",
         order: 224,
+        endpoints: { "POST /": "agent.api.try" },
+        role: "agent.maintain",
       },
     ],
   },
