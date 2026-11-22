@@ -235,8 +235,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       const defWithAsk = optionalStringArray(def, "withAsk");
       const defRoutes = optionalStringArray(def, "routes");
       const defFlags = optionalStringArray(def, "flags") as
-        | ReadonlyArray<"allEndpoints" | "agentApi">
-        | undefined;
+        ReadonlyArray<"allEndpoints" | "agentApi"> | undefined;
       const defDesc = optionalString(def, "description", {
         maxLen: 500,
         label: "defineRole.description",
@@ -332,11 +331,11 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
   app.post("/:agentId/auth/requests/:requestId/decide", async (c) => {
     const projectId = requireValidId(c, "projectId");
     const agentId = requireValidId(c, "agentId");
-    const requestId = requireString(
-      { requestId: c.req.param("requestId") },
-      "requestId",
-      { minLen: 1, maxLen: 200, label: "requestId" },
-    );
+    const requestId = requireString({ requestId: c.req.param("requestId") }, "requestId", {
+      minLen: 1,
+      maxLen: 200,
+      label: "requestId",
+    });
     deps.access.requireProjectOwner(c.var.user.userId, projectId);
     const body = await readJson(c);
     const decision = requireString(body, "decision", {
@@ -345,7 +344,11 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       label: "decision",
     });
     if (typeof deps.agentAuth.decideUpgradeRequest !== "function") {
-      throw new HttpError(501, "not_implemented", "Permission upgrade decisions are not available.");
+      throw new HttpError(
+        501,
+        "not_implemented",
+        "Permission upgrade decisions are not available.",
+      );
     }
     let result;
     try {

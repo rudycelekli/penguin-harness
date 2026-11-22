@@ -146,17 +146,10 @@ export class AuthSelfRefiner {
 }
 
 export type PermissionUpgradeDecision =
-  | "allowed_once"
-  | "allowed_for_agent"
-  | "always_allowed"
-  | "deny";
+  "allowed_once" | "allowed_for_agent" | "always_allowed" | "deny";
 
 export type WithAskDecisionInput =
-  | boolean
-  | PermissionUpgradeDecision
-  | "once"
-  | "agent"
-  | "always";
+  boolean | PermissionUpgradeDecision | "once" | "agent" | "always";
 
 export function normalizeUpgradeDecision(
   raw: WithAskDecisionInput | string | undefined,
@@ -164,8 +157,7 @@ export function normalizeUpgradeDecision(
   if (raw === true || raw === "once" || raw === "allowed_once") return "allowed_once";
   if (raw === "agent" || raw === "allowed_for_agent" || raw === "when_use_this_agent")
     return "allowed_for_agent";
-  if (raw === "always" || raw === "always_allowed" || raw === "write_role")
-    return "always_allowed";
+  if (raw === "always" || raw === "always_allowed" || raw === "write_role") return "always_allowed";
   return "deny";
 }
 

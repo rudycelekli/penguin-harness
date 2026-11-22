@@ -24,7 +24,7 @@ export interface RoleNode {
 export interface RoleContribution {
   role?: string;
   children?: readonly string[];
-   withAsk?: readonly string[];
+  withAsk?: readonly string[];
   routes?: readonly string[];
   flags?: RoleFlags;
   parents?: readonly string[];

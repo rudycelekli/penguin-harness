@@ -231,9 +231,7 @@ export class AgentAuthService implements AgentAuth {
     decision: Exclude<PermissionUpgradeDecision, "deny">,
     now = new Date(),
   ): void {
-    const clean = grants
-      .map((g) => parseRefinedGrant(g).target)
-      .filter(Boolean);
+    const clean = grants.map((g) => parseRefinedGrant(g).target).filter(Boolean);
     if (clean.length === 0) return;
     const key = this.agentKey(projectId, agentId);
 
@@ -297,13 +295,7 @@ export class AgentAuthService implements AgentAuth {
     };
     list[idx] = updated;
     if (normalized !== "deny") {
-      this.applyUpgradeDecision(
-        opts.projectId,
-        opts.agentId,
-        existing.grants,
-        normalized,
-        now,
-      );
+      this.applyUpgradeDecision(opts.projectId, opts.agentId, existing.grants, normalized, now);
     }
     return { request: updated, grant: this.currentGrant(opts.projectId, opts.agentId) };
   }
@@ -322,12 +314,7 @@ export class AgentAuthService implements AgentAuth {
     return { onceGrants: once, agentSessionGrants: session };
   }
 
-  consumeOnceGrant(
-    projectId: string,
-    agentId: string,
-    routeId: string,
-    groupId?: string,
-  ): boolean {
+  consumeOnceGrant(projectId: string, agentId: string, routeId: string, groupId?: string): boolean {
     const key = this.agentKey(projectId, agentId);
     const list = this.onceGrants.get(key);
     if (!list || list.length === 0) return false;
@@ -335,10 +322,7 @@ export class AgentAuthService implements AgentAuth {
       const entry = list[i]!;
       if (entry.remainingUses <= 0) continue;
       const expanded = expandRoleGrant("none", entry.grants);
-      if (
-        expanded.allEndpoints ||
-        matchesRouteGrant(expanded.apiIds, routeId, groupId)
-      ) {
+      if (expanded.allEndpoints || matchesRouteGrant(expanded.apiIds, routeId, groupId)) {
         entry.remainingUses--;
         if (entry.remainingUses <= 0) list.splice(i, 1);
         return true;

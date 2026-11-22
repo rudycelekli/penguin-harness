@@ -14,10 +14,7 @@ import type {
   RouteAuthDebugInfo,
   RouteRoleRegistration,
 } from "../auth/agent-roles.js";
-import type {
-  PermissionUpgradeDecision,
-  WithAskDecisionInput,
-} from "../auth/auth-refiners.js";
+import type { PermissionUpgradeDecision, WithAskDecisionInput } from "../auth/auth-refiners.js";
 import type { AgentAuthContext } from "../auth/agent-auth-service.js";
 import type { AuthSubjectKind } from "../db/repos/auth-role-sessions.js";
 
