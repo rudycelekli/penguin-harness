@@ -2051,7 +2051,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "GET",
         prefix: "/api/projects/:projectId/agents/:agentId/auth",
         auth: "user",
-        roles: ["agent.read", "none@self"],
+        role: "agent.read",
         order: 140,
       },
       {
@@ -2067,7 +2067,7 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         method: "POST",
         prefix: "/api/projects/:projectId/agents/:agentId/auth/requests",
         auth: "user",
-        roles: ["agent.read", "none@self"],
+        role: "agent.read",
         order: 140,
       },
       {
@@ -2412,6 +2412,14 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
         prefix: "/api/sessions/:sessionId/subagents/:childSessionId/abort",
         auth: "user",
         role: "session.maintain",
+        order: 270,
+      },
+      {
+        id: "session.listSubagents",
+        method: "GET",
+        prefix: "/api/sessions/:sessionId/subagents",
+        auth: "user",
+        role: "session.read",
         order: 270,
       },
       {
@@ -2779,6 +2787,7 @@ export class SessionApiRoutes {
   @Bind("session.deleteSteer") deleteSteerRoute!: Hono<AppEnv>;
   @Bind("session.messageSubagent") messageSubagentRoute!: Hono<AppEnv>;
   @Bind("session.abortSubagent") abortSubagentRoute!: Hono<AppEnv>;
+  @Bind("session.listSubagents") listSubagentsRoute!: Hono<AppEnv>;
   @Bind("session.deleteFollowUp") deleteFollowUpRoute!: Hono<AppEnv>;
   @Bind("session.interrupt") interruptSessionRoute!: Hono<AppEnv>;
   @Bind("session.getGoal") getGoalRoute!: Hono<AppEnv>;
@@ -3007,6 +3016,7 @@ export class SessionApiRoutes {
       "POST",
       "/:sessionId/subagents/:childSessionId/abort",
     );
+    this.listSubagentsRoute = endpointOf(sGroup, "GET", "/:sessionId/subagents");
     this.deleteFollowUpRoute = endpointOf(sGroup, "DELETE", "/:sessionId/follow-ups/:followUpId");
     this.interruptSessionRoute = endpointOf(sGroup, "POST", "/:sessionId/interrupt");
     this.getGoalRoute = endpointOf(sGroup, "GET", "/:sessionId/goal");

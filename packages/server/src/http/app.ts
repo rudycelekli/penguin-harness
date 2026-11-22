@@ -161,9 +161,15 @@ async function checkRouteAuth(
       grant.mismatches.unknownRoles.length > 0 ||
       grant.mismatches.unknownRoutes.length > 0);
 
+  const isSelfAuthIntrospection =
+    (normalized === "agent.auth.get" || normalized === "agent.auth.requestUpgrade") &&
+    routeProjectId === agentAuth.projectId &&
+    c.req.param("agentId") === agentAuth.agentId;
+
   let consumedOnce = false;
   if (
     !grant.allEndpoints &&
+    !isSelfAuthIntrospection &&
     !matchesRouteGrant(grant.apiIds, normalized, normalizedGroup, roleRegistry)
   ) {
     if (
