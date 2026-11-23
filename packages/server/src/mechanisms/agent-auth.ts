@@ -31,6 +31,7 @@ export interface AgentPermissionUpgradeRequest {
   readonly decision?: PermissionUpgradeDecision;
   readonly createdAt: string;
   readonly decidedAt?: string;
+  readonly tokenHash?: string;
 }
 
 export interface AgentTemporaryGrantsSummary {
@@ -237,6 +238,7 @@ export abstract class AgentAuth {
     reason?: string;
     routeId?: string;
     now?: Date;
+    tokenHash?: string;
   }): AgentPermissionUpgradeRequest;
   abstract decideUpgradeRequest(opts: {
     projectId: string;
@@ -250,11 +252,19 @@ export abstract class AgentAuth {
     agentId: string,
   ): readonly AgentPermissionUpgradeRequest[];
   abstract temporaryGrantsOf(projectId: string, agentId: string): AgentTemporaryGrantsSummary;
+  abstract isActiveSessionToken(
+    projectId: string,
+    agentId: string,
+    tokenHash: string | undefined,
+    now?: Date,
+  ): boolean;
   abstract consumeOnceGrant(
     projectId: string,
     agentId: string,
     routeId: string,
     groupId?: string,
+    tokenHash?: string,
+    now?: Date,
   ): boolean;
   abstract applyUpgradeDecision(
     projectId: string,
@@ -262,5 +272,6 @@ export abstract class AgentAuth {
     grants: readonly string[],
     decision: Exclude<PermissionUpgradeDecision, "deny">,
     now?: Date,
+    tokenHash?: string,
   ): void;
 }

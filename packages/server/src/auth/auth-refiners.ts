@@ -16,6 +16,7 @@ export interface AuthRefinerContext {
   readonly agentId: string;
   readonly role: string;
   readonly generation: number;
+  readonly tokenHash?: string;
 }
 
 export interface AuthRefinerAction {

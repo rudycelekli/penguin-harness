@@ -44,10 +44,14 @@ export class UpgradeRequestDecisionError extends Error {
   constructor(
     readonly status: 400 | 404 | 409,
     readonly code:
-      "upgrade_request_not_found" | "upgrade_request_already_decided" | "invalid_upgrade_decision",
+      | "upgrade_request_not_found"
+      | "upgrade_request_already_decided"
+      | "upgrade_request_session_inactive"
+      | "invalid_upgrade_decision",
     message: string,
   ) {
     super(message);
+    this.name = "UpgradeRequestDecisionError";
   }
 }
 
@@ -56,6 +60,7 @@ export interface AgentAuthContext {
   agentId: string;
   grant: AgentAuthGrant;
   agentApi: boolean;
+  tokenHash?: string;
 }
 
 interface OnceGrantEntry {
@@ -63,6 +68,12 @@ interface OnceGrantEntry {
   remainingUses: number;
   requestId?: string;
   createdAt: string;
+  tokenHash?: string;
+}
+
+interface AgentSessionGrantState {
+  tokenHash?: string;
+  grants: Set<string>;
 }
 
 @Component()
@@ -72,7 +83,7 @@ export class AgentAuthService implements AgentAuth {
   private readonly activeTokens = new Map<string, string>();
   private readonly activeTokenHashes = new Map<string, string>();
   private readonly onceGrants = new Map<string, OnceGrantEntry[]>();
-  private readonly agentSessionGrants = new Map<string, Set<string>>();
+  private readonly agentSessionGrants = new Map<string, AgentSessionGrantState>();
   private readonly upgradeRequests = new Map<string, AgentPermissionUpgradeRequest[]>();
   private requestSeq = 0;
 
@@ -85,9 +96,74 @@ export class AgentAuthService implements AgentAuth {
     this.agentSessionGrants.delete(key);
   }
 
-  private sessionExtrasFor(projectId: string, agentId: string): readonly string[] {
-    const set = this.agentSessionGrants.get(this.agentKey(projectId, agentId));
-    return set && set.size > 0 ? [...set] : [];
+  private ensureLiveActiveTokenHash(
+    projectId: string,
+    agentId: string,
+    now = new Date(),
+  ): string | null {
+    const key = this.agentKey(projectId, agentId);
+    const hash = this.activeTokenHashes.get(key);
+    if (hash === undefined) return null;
+    const row = this.authRoleSessions.findByTokenHash(hash);
+    if (row === null || row.expiresAt <= now.toISOString()) {
+      this.clearSessionTemporaryGrants(key);
+      this.activeTokens.delete(key);
+      this.activeTokenHashes.delete(key);
+      return null;
+    }
+    return hash;
+  }
+
+  isActiveSessionToken(
+    projectId: string,
+    agentId: string,
+    tokenHash: string | undefined,
+    now = new Date(),
+  ): boolean {
+    const key = this.agentKey(projectId, agentId);
+    const liveHash = this.ensureLiveActiveTokenHash(projectId, agentId, now);
+    if (tokenHash === undefined) return liveHash === null;
+    const row = this.authRoleSessions.findByTokenHash(tokenHash);
+    if (
+      row === null ||
+      row.projectId !== projectId ||
+      row.agentId !== agentId ||
+      row.expiresAt <= now.toISOString()
+    ) {
+      if (this.activeTokenHashes.get(key) === tokenHash) {
+        this.clearSessionTemporaryGrants(key);
+        this.activeTokens.delete(key);
+        this.activeTokenHashes.delete(key);
+      }
+      return false;
+    }
+    if (liveHash !== null && liveHash !== tokenHash) return false;
+    if (liveHash === null) {
+      this.activeTokenHashes.set(key, tokenHash);
+    }
+    return true;
+  }
+
+  private sessionExtrasFor(
+    projectId: string,
+    agentId: string,
+    tokenHash?: string,
+    now = new Date(),
+  ): readonly string[] {
+    const key = this.agentKey(projectId, agentId);
+    const liveHash = this.ensureLiveActiveTokenHash(projectId, agentId, now);
+    const state = this.agentSessionGrants.get(key);
+    if (!state || state.grants.size === 0) return [];
+    if (state.tokenHash !== undefined) {
+      if (liveHash === null || state.tokenHash !== liveHash) {
+        this.agentSessionGrants.delete(key);
+        return [];
+      }
+      if (tokenHash !== undefined && state.tokenHash !== tokenHash) return [];
+    } else if (tokenHash !== undefined && liveHash !== null && liveHash !== tokenHash) {
+      return [];
+    }
+    return [...state.grants];
   }
 
   issueSession(
@@ -218,6 +294,7 @@ export class AgentAuthService implements AgentAuth {
     reason?: string;
     routeId?: string;
     now?: Date;
+    tokenHash?: string;
   }): AgentPermissionUpgradeRequest {
     const cleanGrants = opts.grants.map((g) => g.trim()).filter(Boolean);
     if (cleanGrants.length === 0) {
@@ -226,6 +303,10 @@ export class AgentAuthService implements AgentAuth {
     for (const g of cleanGrants) assertNoWildcard(g, "requestUpgrade(grants)");
     const now = opts.now ?? new Date();
     const current = this.generationOf(opts.projectId, opts.agentId);
+    const boundHash =
+      opts.tokenHash ??
+      this.ensureLiveActiveTokenHash(opts.projectId, opts.agentId, now) ??
+      undefined;
     const req: AgentPermissionUpgradeRequest = {
       requestId: `req_${now.getTime()}_${++this.requestSeq}`,
       projectId: opts.projectId,
@@ -234,6 +315,7 @@ export class AgentAuthService implements AgentAuth {
       grants: cleanGrants,
       ...(opts.reason !== undefined ? { reason: opts.reason } : {}),
       ...(opts.routeId !== undefined ? { routeId: opts.routeId } : {}),
+      ...(boundHash !== undefined ? { tokenHash: boundHash } : {}),
       status: "pending",
       createdAt: now.toISOString(),
     };
@@ -250,25 +332,42 @@ export class AgentAuthService implements AgentAuth {
     grants: readonly string[],
     decision: Exclude<PermissionUpgradeDecision, "deny">,
     now = new Date(),
+    tokenHash?: string,
   ): void {
     const clean = grants.map((g) => parseRefinedGrant(g).target).filter(Boolean);
     if (clean.length === 0) return;
     const key = this.agentKey(projectId, agentId);
 
-    if (decision === "allowed_once") {
-      const list = this.onceGrants.get(key) ?? [];
-      list.push({ grants: clean, remainingUses: 1, createdAt: now.toISOString() });
-      this.onceGrants.set(key, list);
-      return;
-    }
-
-    if (decision === "allowed_for_agent") {
-      let set = this.agentSessionGrants.get(key);
-      if (!set) {
-        set = new Set();
-        this.agentSessionGrants.set(key, set);
+    if (decision === "allowed_once" || decision === "allowed_for_agent") {
+      if (
+        tokenHash !== undefined &&
+        !this.isActiveSessionToken(projectId, agentId, tokenHash, now)
+      ) {
+        return;
       }
-      for (const g of clean) set.add(g);
+      const boundHash =
+        tokenHash ?? this.ensureLiveActiveTokenHash(projectId, agentId, now) ?? undefined;
+      if (decision === "allowed_once") {
+        const list = this.onceGrants.get(key) ?? [];
+        list.push({
+          grants: clean,
+          remainingUses: 1,
+          createdAt: now.toISOString(),
+          ...(boundHash !== undefined ? { tokenHash: boundHash } : {}),
+        });
+        this.onceGrants.set(key, list);
+        return;
+      }
+
+      let state = this.agentSessionGrants.get(key);
+      if (!state || state.tokenHash !== boundHash) {
+        state = {
+          ...(boundHash !== undefined ? { tokenHash: boundHash } : {}),
+          grants: new Set(),
+        };
+        this.agentSessionGrants.set(key, state);
+      }
+      for (const g of clean) state.grants.add(g);
       return;
     }
 
@@ -328,8 +427,26 @@ export class AgentAuthService implements AgentAuth {
       );
     }
     const now = opts.now ?? new Date();
+    if (
+      (normalized === "allowed_once" || normalized === "allowed_for_agent") &&
+      existing.tokenHash !== undefined &&
+      !this.isActiveSessionToken(opts.projectId, opts.agentId, existing.tokenHash, now)
+    ) {
+      throw new UpgradeRequestDecisionError(
+        409,
+        "upgrade_request_session_inactive",
+        `The agent session for permission upgrade request "${opts.requestId}" is no longer active.`,
+      );
+    }
     if (normalized !== "deny") {
-      this.applyUpgradeDecision(opts.projectId, opts.agentId, existing.grants, normalized, now);
+      this.applyUpgradeDecision(
+        opts.projectId,
+        opts.agentId,
+        existing.grants,
+        normalized,
+        now,
+        existing.tokenHash,
+      );
     }
     const updated: AgentPermissionUpgradeRequest = {
       ...existing,
@@ -350,18 +467,45 @@ export class AgentAuthService implements AgentAuth {
 
   temporaryGrantsOf(projectId: string, agentId: string): AgentTemporaryGrantsSummary {
     const key = this.agentKey(projectId, agentId);
-    const once = (this.onceGrants.get(key) ?? []).filter((e) => e.remainingUses > 0);
-    const session = [...(this.agentSessionGrants.get(key) ?? [])];
+    const liveHash = this.ensureLiveActiveTokenHash(projectId, agentId);
+    const once = (this.onceGrants.get(key) ?? []).filter(
+      (e) =>
+        e.remainingUses > 0 &&
+        (e.tokenHash === undefined || (liveHash !== null && e.tokenHash === liveHash)),
+    );
+    const state = this.agentSessionGrants.get(key);
+    const session =
+      state &&
+      (state.tokenHash === undefined || (liveHash !== null && state.tokenHash === liveHash))
+        ? [...state.grants]
+        : [];
     return { onceGrants: once, agentSessionGrants: session };
   }
 
-  consumeOnceGrant(projectId: string, agentId: string, routeId: string, groupId?: string): boolean {
+  consumeOnceGrant(
+    projectId: string,
+    agentId: string,
+    routeId: string,
+    groupId?: string,
+    tokenHash?: string,
+    now = new Date(),
+  ): boolean {
+    if (tokenHash !== undefined && !this.isActiveSessionToken(projectId, agentId, tokenHash, now)) {
+      return false;
+    }
     const key = this.agentKey(projectId, agentId);
+    const liveHash = this.ensureLiveActiveTokenHash(projectId, agentId, now);
     const list = this.onceGrants.get(key);
     if (!list || list.length === 0) return false;
     for (let i = 0; i < list.length; i++) {
       const entry = list[i]!;
       if (entry.remainingUses <= 0) continue;
+      if (entry.tokenHash !== undefined) {
+        if (liveHash === null || entry.tokenHash !== liveHash) continue;
+        if (tokenHash !== undefined && entry.tokenHash !== tokenHash) continue;
+      } else if (tokenHash !== undefined && liveHash !== null && liveHash !== tokenHash) {
+        continue;
+      }
       if (this.agentAuthPermissions.matchesTemporaryGrant(entry.grants, routeId, groupId)) {
         entry.remainingUses--;
         if (entry.remainingUses <= 0) list.splice(i, 1);
@@ -384,10 +528,13 @@ export class AgentAuthService implements AgentAuth {
       }
       return null;
     }
-    const isActiveSession =
-      !this.activeTokenHashes.has(key) || this.activeTokenHashes.get(key) === tokenHash;
+    const isActiveSession = this.isActiveSessionToken(row.projectId, row.agentId, tokenHash, now);
     const grant = isActiveSession
-      ? this.currentGrant(row.projectId, row.agentId)
+      ? this.agentAuthPermissions.grantOf(
+          row.projectId,
+          row.agentId,
+          this.sessionExtrasFor(row.projectId, row.agentId, tokenHash, now),
+        )
       : this.agentAuthPermissions.grantOf(row.projectId, row.agentId, []);
     if (grant === null) return null;
     this.authRoleSessions.touch(row.tokenHash, now.toISOString());
@@ -396,6 +543,7 @@ export class AgentAuthService implements AgentAuth {
       agentId: row.agentId,
       grant,
       agentApi: grant.agentApi ?? roleHasAgentApi(grant.role),
+      tokenHash: row.tokenHash,
     };
   }
 

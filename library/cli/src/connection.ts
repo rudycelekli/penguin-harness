@@ -146,6 +146,7 @@ export async function resolveConnection(
   // Data root: the --root option first (relative paths against cwd), else PENGUIN_HOME / the
   // default root (the CLI's documented priority, packages/server/src/cli/root-option.ts).
   const root = opts.root !== undefined ? path.resolve(opts.root) : resolveRoot();
+  const explicitRoot = opts.root !== undefined;
   const explicit =
     opts.server?.trim() ||
     (opts.root === undefined ? process.env.PENGUIN_API_URL?.trim() : undefined) ||
@@ -156,9 +157,15 @@ export async function resolveConnection(
     if (!loopback && !process.env.PENGUIN_API_TOKEN?.trim()) {
       throw new Error(t.client.remoteNeedsToken(url.origin));
     }
-    return { baseUrl: url.origin, root, autoStarted: false, loopback, fromRoot: false };
+    return {
+      baseUrl: url.origin,
+      root,
+      autoStarted: false,
+      loopback,
+      fromRoot: false,
+      ...(explicitRoot && loopback ? { explicitRoot: true } : {}),
+    };
   }
-  const explicitRoot = opts.root !== undefined;
   const lock = await liveServerLock(root);
   if (lock !== null) {
     return {

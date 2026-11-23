@@ -320,6 +320,16 @@ describe("a plugin command that runs for a Session's driver, called outside a Se
       const client = new ServerClient(conn, t);
       await client.request("GET", "/api/projects");
       expect(sent.map((h) => h.authorization)).toEqual(["Bearer explicit-root-token"]);
+
+      sent.length = 0;
+      const connWithLoopbackServer = await resolveConnection(
+        { root: explicitRootDir, server: `http://127.0.0.1:${port}` },
+        t,
+      );
+      expect(connWithLoopbackServer.explicitRoot).toBe(true);
+      const clientWithLoopbackServer = new ServerClient(connWithLoopbackServer, t);
+      await clientWithLoopbackServer.request("GET", "/api/projects");
+      expect(sent.map((h) => h.authorization)).toEqual(["Bearer explicit-root-token"]);
     } finally {
       listener.close();
       fs.rmSync(explicitRootDir, { recursive: true, force: true });

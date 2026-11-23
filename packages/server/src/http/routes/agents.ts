@@ -45,6 +45,7 @@ import type { Access } from "@prismshadow/penguin-library-project";
 import type { AgentApi } from "@prismshadow/penguin-library-agent-api";
 import type { UserDraftsStore } from "@prismshadow/penguin-library-auth";
 import type { AgentAuth } from "../../mechanisms/agent-auth.js";
+import { UpgradeRequestDecisionError } from "../../auth/agent-auth-service.js";
 import type { AgentAuthRole } from "../../auth/agent-roles.js";
 import { DEFAULT_AGENT_AUTH_ROLE } from "../../auth/agent-roles.js";
 import type { Workbenches } from "../../mechanisms/workbenches.js";
@@ -313,6 +314,7 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
       grants,
       ...(reason !== undefined ? { reason } : {}),
       ...(routeId !== undefined ? { routeId } : {}),
+      ...(c.var.agentAuth?.tokenHash !== undefined ? { tokenHash: c.var.agentAuth.tokenHash } : {}),
       now: new Date(),
     });
     return c.json(
@@ -360,19 +362,8 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
         now: new Date(),
       });
     } catch (err) {
-      if (
-        err !== null &&
-        typeof err === "object" &&
-        "status" in err &&
-        "code" in err &&
-        typeof (err as { status: unknown }).status === "number" &&
-        typeof (err as { code: unknown }).code === "string"
-      ) {
-        throw new HttpError(
-          (err as { status: 400 | 404 | 409 }).status,
-          (err as { code: string }).code,
-          err instanceof Error ? err.message : String(err),
-        );
+      if (err instanceof UpgradeRequestDecisionError) {
+        throw new HttpError(err.status, err.code, err.message);
       }
       throw err;
     }

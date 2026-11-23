@@ -17,6 +17,7 @@ export interface AgentRequestAuth {
     apiIds: ReadonlySet<string>;
   };
   agentApi: boolean;
+  tokenHash?: string;
 }
 
 export type AppEnv = {

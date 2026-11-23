@@ -1109,4 +1109,90 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
     expect(rotatedToken).not.toBe(token);
     expect((await req("POST", "/api/projects/p1/runtime/run", rotatedToken)).status).toBe(403);
   });
+
+  it("prevents an in-flight request from a rotated session token from consuming a new session's once-grant or succeeding after async refiner wait", async () => {
+    const { auth: agentAuth } = service();
+    let releaseAsyncAsk!: (decision: "deny" | "allowed_for_agent") => void;
+    const askEntered = new Promise<void>((resolve) => {
+      releaseAsyncAsk = () => {};
+      void resolve;
+    });
+    void askEntered;
+    let notifyEntered!: () => void;
+    const enteredPromise = new Promise<void>((resolve) => {
+      notifyEntered = resolve;
+    });
+    const gatePromise = new Promise<"deny" | "allowed_for_agent">((resolve) => {
+      releaseAsyncAsk = resolve;
+    });
+
+    const { req } = httpWithStandardRoutes(
+      agentAuth,
+      new AuthWithAskRefiner(async () => {
+        notifyEntered();
+        return await gatePromise;
+      }),
+    );
+
+    const t0 = new Date("2026-11-22T01:00:00Z");
+    const { token: oldToken } = agentAuth.issueSession("p1", "a1", t0);
+    agentAuth.updateGrant("p1", "a1", "general", ["vault.maintain@withAsk"], t0);
+
+    // A pending upgrade request created under oldToken cannot be approved as temporary after rotation
+    const staleUpgradeReq = agentAuth.requestUpgrade({
+      projectId: "p1",
+      agentId: "a1",
+      grants: ["vault.maintain"],
+      routeId: "vault.update",
+      now: t0,
+    });
+
+    // Start an in-flight request using oldToken that blocks inside the async @withAsk refiner
+    const inFlightOldRequest = req("PUT", "/api/projects/p1/agents/a1/vault", oldToken);
+    await enteredPromise;
+
+    // Rotate session while old request is still awaiting the async refiner
+    const { token: newToken } = agentAuth.issueSession("p1", "a1", t0);
+    expect(newToken).not.toBe(oldToken);
+
+    // Approving the stale upgrade request from the old session for a session-scoped grant is rejected (409)
+    expect(() =>
+      agentAuth.decideUpgradeRequest({
+        projectId: "p1",
+        agentId: "a1",
+        requestId: staleUpgradeReq.requestId,
+        decision: "allowed_once",
+        now: t0,
+      }),
+    ).toThrow(/no longer active/);
+
+    // Create and approve a fresh allowed_once upgrade request for the NEW session
+    const freshUpgradeReq = agentAuth.requestUpgrade({
+      projectId: "p1",
+      agentId: "a1",
+      grants: ["vault.maintain"],
+      routeId: "vault.update",
+      now: t0,
+    });
+    agentAuth.decideUpgradeRequest({
+      projectId: "p1",
+      agentId: "a1",
+      requestId: freshUpgradeReq.requestId,
+      decision: "allowed_once",
+      now: t0,
+    });
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").onceGrants).toHaveLength(1);
+
+    // Now release the old in-flight request (even if it tries to fall back to once-grant or grant session permission)
+    releaseAsyncAsk("deny");
+    const oldRes = await inFlightOldRequest;
+    expect(oldRes.status).toBe(401);
+
+    // The new session's once-grant was NOT consumed by the old rotated request
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").onceGrants).toHaveLength(1);
+
+    // The new session token consumes its own once-grant and succeeds
+    expect((await req("PUT", "/api/projects/p1/agents/a1/vault", newToken)).status).toBe(200);
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").onceGrants).toHaveLength(0);
+  });
 });

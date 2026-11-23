@@ -162,6 +162,26 @@ async function checkRouteAuth(
     routeProjectId === agentAuth.projectId &&
     c.req.param("agentId") === agentAuth.agentId;
 
+  const assertSessionTokenStillActive = () => {
+    if (
+      agentAuth.tokenHash !== undefined &&
+      typeof agentAuthService?.isActiveSessionToken === "function" &&
+      !agentAuthService.isActiveSessionToken(
+        agentAuth.projectId,
+        agentAuth.agentId,
+        agentAuth.tokenHash,
+      )
+    ) {
+      throw new HttpError(
+        401,
+        "unauthorized",
+        "Agent session token expired or rotated during authorization.",
+      );
+    }
+  };
+
+  assertSessionTokenStillActive();
+
   let consumedOnce = false;
   if (
     !grant.allEndpoints &&
@@ -174,6 +194,7 @@ async function checkRouteAuth(
         agentAuth.agentId,
         normalized,
         normalizedGroup,
+        agentAuth.tokenHash,
       )
     ) {
       consumedOnce = true;
@@ -221,6 +242,7 @@ async function checkRouteAuth(
       agentId: agentAuth.agentId,
       role: grant.role,
       generation: grant.generation,
+      ...(agentAuth.tokenHash !== undefined ? { tokenHash: agentAuth.tokenHash } : {}),
     };
     const authAction = {
       routeId: normalized,
@@ -238,6 +260,7 @@ async function checkRouteAuth(
         authAction,
         c.req.raw,
       );
+      assertSessionTokenStillActive();
       if (preEval.ok) passedNonInteractive = true;
     }
     if (!passedNonInteractive) {
@@ -248,6 +271,7 @@ async function checkRouteAuth(
           agentAuth.agentId,
           normalized,
           normalizedGroup,
+          agentAuth.tokenHash,
         )
       ) {
         passedNonInteractive = true;
@@ -264,6 +288,7 @@ async function checkRouteAuth(
         authAction,
         c.req.raw,
       );
+      assertSessionTokenStillActive();
       if (!evalResult.ok) {
         if (
           evalResult.reason === "refiner_denied" &&
@@ -272,9 +297,10 @@ async function checkRouteAuth(
             agentAuth.agentId,
             normalized,
             normalizedGroup,
+            agentAuth.tokenHash,
           )
         ) {
-          // Allowed once via approved upgrade request.
+          consumedOnce = true;
         } else {
           const info = roleRegistry.describeRouteAuthFailure(
             normalized,
@@ -309,6 +335,8 @@ async function checkRouteAuth(
       }
     }
   }
+
+  assertSessionTokenStillActive();
 
   if (
     !c.var.user.isAdmin &&
@@ -452,6 +480,8 @@ export class HttpModule {
             ctx.agentId,
             [action.routeId],
             decision,
+            new Date(),
+            ctx.tokenHash,
           );
         }
       });
