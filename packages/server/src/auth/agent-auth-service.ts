@@ -336,15 +336,12 @@ export class AgentAuthService implements AgentAuth {
   ): void {
     const clean = grants.map((g) => parseRefinedGrant(g).target).filter(Boolean);
     if (clean.length === 0) return;
+    if (tokenHash !== undefined && !this.isActiveSessionToken(projectId, agentId, tokenHash, now)) {
+      return;
+    }
     const key = this.agentKey(projectId, agentId);
 
     if (decision === "allowed_once" || decision === "allowed_for_agent") {
-      if (
-        tokenHash !== undefined &&
-        !this.isActiveSessionToken(projectId, agentId, tokenHash, now)
-      ) {
-        return;
-      }
       const boundHash =
         tokenHash ?? this.ensureLiveActiveTokenHash(projectId, agentId, now) ?? undefined;
       if (decision === "allowed_once") {
@@ -428,7 +425,7 @@ export class AgentAuthService implements AgentAuth {
     }
     const now = opts.now ?? new Date();
     if (
-      (normalized === "allowed_once" || normalized === "allowed_for_agent") &&
+      normalized !== "deny" &&
       existing.tokenHash !== undefined &&
       !this.isActiveSessionToken(opts.projectId, opts.agentId, existing.tokenHash, now)
     ) {

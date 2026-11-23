@@ -475,12 +475,20 @@ export class HttpModule {
     if (this.agentAuth !== undefined) {
       refinerRegistry.bindUpgradeDecisionHandler((decision, ctx, action) => {
         if (decision === "allowed_for_agent" || decision === "always_allowed") {
+          const now = new Date();
+          if (
+            ctx.tokenHash !== undefined &&
+            typeof this.agentAuth.isActiveSessionToken === "function" &&
+            !this.agentAuth.isActiveSessionToken(ctx.projectId, ctx.agentId, ctx.tokenHash, now)
+          ) {
+            return;
+          }
           this.agentAuth.applyUpgradeDecision?.(
             ctx.projectId,
             ctx.agentId,
             [action.routeId],
             decision,
-            new Date(),
+            now,
             ctx.tokenHash,
           );
         }
