@@ -3101,7 +3101,8 @@ export class SessionsModule {
   @Provide() env!: SessionEnv;
   @Provide() activity!: SessionActivity;
   setup() {
-    const { config, settings, authState } = this;
+    const { config, settings } = this;
+    void this.authState;
     const log = (line: string) => this.log.line(line);
     const channels = this.channels as ChannelHub;
     const sessionsRepo = this.sessionsRepo;
@@ -3145,12 +3146,10 @@ export class SessionsModule {
           config.host === "0.0.0.0" || config.host === "::"
             ? "127.0.0.1"
             : (loopbackHostRoles(config.host)?.app ?? config.host);
-        const hasAgentAuthGeneration =
-          this.agentAuth !== undefined &&
-          this.agentAuth.generationOf(ctx.projectId, ctx.agentId) !== null;
-        const token = hasAgentAuthGeneration
-          ? this.agentAuth.ensureSessionToken(ctx.projectId, ctx.agentId, this.clock.now())
-          : authState.apiToken;
+        const token =
+          this.agentAuth !== undefined
+            ? this.agentAuth.ensureSessionToken(ctx.projectId, ctx.agentId, this.clock.now())
+            : null;
         const orgId = orgCache.ownerOfSession(ctx.sessionId)?.orgId ?? null;
         return {
           PENGUIN_API_URL: `http://${host}:${config.port}`,

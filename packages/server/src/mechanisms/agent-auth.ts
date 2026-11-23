@@ -139,6 +139,11 @@ export abstract class AgentAuthPermissions {
     role: string,
     groupId?: string,
   ): RouteAuthDebugInfo;
+  abstract matchesTemporaryGrant(
+    grants: readonly string[],
+    routeId: string,
+    groupId?: string,
+  ): boolean;
 }
 
 /** AuthRoleSessions: the mechanism AuthRoleSessionsRepo implements. */

@@ -989,4 +989,122 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
     expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
     expect((await req("PUT", "/api/projects/p1/agents/a1/vault", token)).status).toBe(200);
   });
+
+  it("enforces terminal state on upgrade requests, expands runtime-registered roles in allowed_once, and clears temporary grants when a session token expires or rotates", async () => {
+    const { auth: agentAuth } = service();
+    const runtimeGroup = new Hono<AppEnv>();
+    runtimeGroup.post("/run", (c) => c.json({ ok: "runtime-ran", projectId: c.req.param("projectId") }));
+
+    agentAuth.registerRole("role.runtime_plugin.maintain", {
+      id: "role.runtime_plugin.maintain",
+    });
+    agentAuth.registerRoute(
+      {
+        routeId: "runtime_plugin.execute",
+        role: "runtime_plugin.maintain",
+      },
+      "RuntimePluginModule",
+    );
+    agentAuth.registerRoleBinding(
+      {
+        role: "runtime_plugin.maintain",
+        routes: ["runtime_plugin.execute"],
+      },
+      "RuntimePluginModule",
+    );
+
+    const { req } = buildTestHttp(agentAuth, {
+      routes: [
+        routeEntry(
+          "runtime_plugin.execute",
+          "POST",
+          "/api/projects/:projectId/runtime/run",
+          endpointOf(runtimeGroup, "POST", "/run"),
+          { role: "runtime_plugin.maintain" },
+        ),
+      ],
+    });
+
+    const t0 = new Date("2026-11-22T00:00:00Z");
+    const { token } = agentAuth.issueSession("p1", "a1", t0);
+
+    // 1. Runtime-registered role is denied under default `general` role
+    expect((await req("POST", "/api/projects/p1/runtime/run", token)).status).toBe(403);
+
+    // 2. Request upgrade for runtime-registered role -> approve as allowed_once
+    const upgReq = agentAuth.requestUpgrade({
+      projectId: "p1",
+      agentId: "a1",
+      grants: ["runtime_plugin.maintain"],
+      routeId: "runtime_plugin.execute",
+      now: t0,
+    });
+    agentAuth.decideUpgradeRequest({
+      projectId: "p1",
+      agentId: "a1",
+      requestId: upgReq.requestId,
+      decision: "allowed_once",
+      now: t0,
+    });
+
+    // Duplicate `allowed_once` decision or conflicting `deny` on an already decided request is rejected (409)
+    expect(() =>
+      agentAuth.decideUpgradeRequest({
+        projectId: "p1",
+        agentId: "a1",
+        requestId: upgReq.requestId,
+        decision: "allowed_once",
+        now: t0,
+      }),
+    ).toThrow(/already been decided/);
+    expect(() =>
+      agentAuth.decideUpgradeRequest({
+        projectId: "p1",
+        agentId: "a1",
+        requestId: upgReq.requestId,
+        decision: "deny",
+        now: t0,
+      }),
+    ).toThrow(/already been decided/);
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").onceGrants).toHaveLength(1);
+
+    // First call to runtime route succeeds via runtime RoleRegistry expansion, second is denied
+    expect((await req("POST", "/api/projects/p1/runtime/run", token)).status).toBe(200);
+    expect((await req("POST", "/api/projects/p1/runtime/run", token)).status).toBe(403);
+
+    // 3. Session-scoped temporary grant (`allowed_for_agent`) is cleared when session token expires / re-issues
+    const sessionUpg = agentAuth.requestUpgrade({
+      projectId: "p1",
+      agentId: "a1",
+      grants: ["runtime_plugin.maintain"],
+      now: t0,
+    });
+    agentAuth.decideUpgradeRequest({
+      projectId: "p1",
+      agentId: "a1",
+      requestId: sessionUpg.requestId,
+      decision: "allowed_for_agent",
+      now: t0,
+    });
+    // Idempotent repeat of `allowed_for_agent` returns the same decided request
+    const idempotentRepeat = agentAuth.decideUpgradeRequest({
+      projectId: "p1",
+      agentId: "a1",
+      requestId: sessionUpg.requestId,
+      decision: "allowed_for_agent",
+      now: t0,
+    });
+    expect(idempotentRepeat.request.status).toBe("approved");
+    expect((await req("POST", "/api/projects/p1/runtime/run", token)).status).toBe(200);
+
+    // Advance clock past 30-day session TTL -> authenticate returns null and clears temporary grants
+    const afterExpiry = new Date(t0.getTime() + 31 * 24 * 60 * 60_000);
+    expect(agentAuth.authenticate(token, afterExpiry)).toBeNull();
+    expect(agentAuth.temporaryGrantsOf("p1", "a1").agentSessionGrants).toEqual([]);
+
+    // Re-issuing a new session token via ensureSessionToken starts clean without stale temporary grants
+    const rotatedToken = agentAuth.ensureSessionToken("p1", "a1", afterExpiry);
+    expect(rotatedToken).not.toBe(token);
+    expect((await req("POST", "/api/projects/p1/runtime/run", rotatedToken)).status).toBe(403);
+  });
 });

@@ -207,6 +207,24 @@ describe("Controlled Agent Auth QA: end-to-end session restrictions and permissi
         ).toBe(201);
 
         const rootToken = t.deps.authService.localApiToken();
+        // Verify that even a pre-existing / seeded Agent with no prior auth generation row
+        // (`default_agent`) receives a role-scoped Agent Session token from `controlEnv`,
+        // never falling back to the server-wide `rootToken`.
+        expect(agentAuth.generationOf("default_project", "default_agent")).toBeNull();
+        const defaultAgentEnv = t.deps.env.controlEnv({
+          projectId: "default_project",
+          agentId: "default_agent",
+          sessionId: "session-2026-11-22-00-00-00-00000001",
+        });
+        expect(defaultAgentEnv.PENGUIN_API_TOKEN).toBeDefined();
+        expect(defaultAgentEnv.PENGUIN_API_TOKEN).not.toBe(rootToken);
+        const defaultAgentAuthCtx = agentAuth.authenticate(
+          defaultAgentEnv.PENGUIN_API_TOKEN!,
+          new Date(),
+        );
+        expect(defaultAgentAuthCtx?.grant.role).toBe("general");
+        expect(defaultAgentAuthCtx?.grant.allEndpoints).toBe(false);
+
         const issuedAgentToken = agentAuth.ensureSessionToken(
           "default_project",
           "qa_runner",
@@ -372,6 +390,15 @@ fs.writeFileSync(${JSON.stringify(turn1ReportPath)}, JSON.stringify({
             )
           ).status,
         ).toBe(200);
+        // Repeating `allowed_once` or flipping to `deny` on an already decided request is rejected with 409
+        expect(
+          (
+            await adminHttp.post(
+              `/api/projects/default_project/agents/qa_runner/auth/requests/${r1.reqOnceId}/decide`,
+              { decision: "allowed_once" },
+            )
+          ).status,
+        ).toBe(409);
         expect(
           (
             await adminHttp.post(
@@ -380,6 +407,14 @@ fs.writeFileSync(${JSON.stringify(turn1ReportPath)}, JSON.stringify({
             )
           ).status,
         ).toBe(200);
+        expect(
+          (
+            await adminHttp.post(
+              `/api/projects/default_project/agents/qa_runner/auth/requests/${r1.reqSessionId}/decide`,
+              { decision: "deny" },
+            )
+          ).status,
+        ).toBe(409);
 
         // =========================================================================
         // TURN 2: Verify `allowed_once` single-use consumption & `allowed_for_agent`

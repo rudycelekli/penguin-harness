@@ -151,14 +151,33 @@ export type PermissionUpgradeDecision =
 export type WithAskDecisionInput =
   boolean | PermissionUpgradeDecision | "once" | "agent" | "always";
 
+export function parseUpgradeDecision(
+  raw: WithAskDecisionInput | string | undefined,
+): PermissionUpgradeDecision | null {
+  if (raw === true || raw === "once" || raw === "allowed_once" || raw === "1") {
+    return "allowed_once";
+  }
+  if (
+    raw === "agent" ||
+    raw === "allowed_for_agent" ||
+    raw === "when_use_this_agent" ||
+    raw === "2"
+  ) {
+    return "allowed_for_agent";
+  }
+  if (raw === "always" || raw === "always_allowed" || raw === "write_role" || raw === "3") {
+    return "always_allowed";
+  }
+  if (raw === false || raw === "deny" || raw === "denied" || raw === "reject") {
+    return "deny";
+  }
+  return null;
+}
+
 export function normalizeUpgradeDecision(
   raw: WithAskDecisionInput | string | undefined,
 ): PermissionUpgradeDecision {
-  if (raw === true || raw === "once" || raw === "allowed_once") return "allowed_once";
-  if (raw === "agent" || raw === "allowed_for_agent" || raw === "when_use_this_agent")
-    return "allowed_for_agent";
-  if (raw === "always" || raw === "always_allowed" || raw === "write_role") return "always_allowed";
-  return "deny";
+  return parseUpgradeDecision(raw) ?? "deny";
 }
 
 /** Built-in `@withAsk` refiner: requires interactive approval within `ctx.projectId`. */

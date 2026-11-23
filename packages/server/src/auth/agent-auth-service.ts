@@ -21,7 +21,6 @@ import {
   DEFAULT_AGENT_AUTH_ROLE,
   RoleRegistry,
   assertNoWildcard,
-  expandRoleGrant,
   matchesRouteGrant,
   parseRefinedGrant,
   roleHasAgentApi,
@@ -34,12 +33,25 @@ import {
   type RouteRoleRegistration,
 } from "./agent-roles.js";
 import {
-  normalizeUpgradeDecision,
+  parseUpgradeDecision,
   type PermissionUpgradeDecision,
   type WithAskDecisionInput,
 } from "./auth-refiners.js";
 
 export const AGENT_SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
+
+export class UpgradeRequestDecisionError extends Error {
+  constructor(
+    readonly status: 400 | 404 | 409,
+    readonly code:
+      | "upgrade_request_not_found"
+      | "upgrade_request_already_decided"
+      | "invalid_upgrade_decision",
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 export interface AgentAuthContext {
   projectId: string;
@@ -60,6 +72,7 @@ export class AgentAuthService implements AgentAuth {
   @Use() private readonly authRoleSessions!: AuthRoleSessions;
   @Use() private readonly agentAuthPermissions!: AgentAuthPermissions;
   private readonly activeTokens = new Map<string, string>();
+  private readonly activeTokenHashes = new Map<string, string>();
   private readonly onceGrants = new Map<string, OnceGrantEntry[]>();
   private readonly agentSessionGrants = new Map<string, Set<string>>();
   private readonly upgradeRequests = new Map<string, AgentPermissionUpgradeRequest[]>();
@@ -67,6 +80,11 @@ export class AgentAuthService implements AgentAuth {
 
   private agentKey(projectId: string, agentId: string): string {
     return `${projectId}\0${agentId}`;
+  }
+
+  private clearSessionTemporaryGrants(key: string): void {
+    this.onceGrants.delete(key);
+    this.agentSessionGrants.delete(key);
   }
 
   private sessionExtrasFor(projectId: string, agentId: string): readonly string[] {
@@ -79,6 +97,9 @@ export class AgentAuthService implements AgentAuth {
     agentId: string,
     now: Date,
   ): { token: string; expiresAt: string; generation: number; role: AgentAuthRole } {
+    const key = this.agentKey(projectId, agentId);
+    this.clearSessionTemporaryGrants(key);
+    this.authRoleSessions.deleteSessionsOf(projectId, agentId);
     const out = this.authRoleSessions.issue({
       projectId,
       agentId,
@@ -88,7 +109,8 @@ export class AgentAuthService implements AgentAuth {
       now,
       ttlMs: AGENT_SESSION_TTL_MS,
     });
-    this.activeTokens.set(this.agentKey(projectId, agentId), out.token);
+    this.activeTokens.set(key, out.token);
+    this.activeTokenHashes.set(key, authRoleSessionTokenHash(out.token));
     const current = this.authRoleSessions.generationOf(projectId, agentId);
     return { ...out, role: current?.role ?? DEFAULT_AGENT_AUTH_ROLE };
   }
@@ -278,15 +300,39 @@ export class AgentAuthService implements AgentAuth {
     decision: WithAskDecisionInput | string;
     now?: Date;
   }): { request: AgentPermissionUpgradeRequest; grant: AgentAuthGrant | null } {
+    const normalized = parseUpgradeDecision(opts.decision);
+    if (normalized === null) {
+      throw new UpgradeRequestDecisionError(
+        400,
+        "invalid_upgrade_decision",
+        `Invalid permission upgrade decision "${String(opts.decision)}".`,
+      );
+    }
     const key = this.agentKey(opts.projectId, opts.agentId);
     const list = this.upgradeRequests.get(key) ?? [];
     const idx = list.findIndex((r) => r.requestId === opts.requestId);
     if (idx < 0) {
-      throw new Error(`Permission upgrade request "${opts.requestId}" not found.`);
+      throw new UpgradeRequestDecisionError(
+        404,
+        "upgrade_request_not_found",
+        `Permission upgrade request "${opts.requestId}" not found.`,
+      );
     }
     const existing = list[idx]!;
+    if (existing.status !== "pending") {
+      if (existing.decision === normalized && normalized !== "allowed_once") {
+        return { request: existing, grant: this.currentGrant(opts.projectId, opts.agentId) };
+      }
+      throw new UpgradeRequestDecisionError(
+        409,
+        "upgrade_request_already_decided",
+        `Permission upgrade request "${opts.requestId}" has already been decided (${existing.decision ?? existing.status}).`,
+      );
+    }
     const now = opts.now ?? new Date();
-    const normalized = normalizeUpgradeDecision(opts.decision);
+    if (normalized !== "deny") {
+      this.applyUpgradeDecision(opts.projectId, opts.agentId, existing.grants, normalized, now);
+    }
     const updated: AgentPermissionUpgradeRequest = {
       ...existing,
       status: normalized === "deny" ? "denied" : "approved",
@@ -294,9 +340,6 @@ export class AgentAuthService implements AgentAuth {
       decidedAt: now.toISOString(),
     };
     list[idx] = updated;
-    if (normalized !== "deny") {
-      this.applyUpgradeDecision(opts.projectId, opts.agentId, existing.grants, normalized, now);
-    }
     return { request: updated, grant: this.currentGrant(opts.projectId, opts.agentId) };
   }
 
@@ -321,8 +364,7 @@ export class AgentAuthService implements AgentAuth {
     for (let i = 0; i < list.length; i++) {
       const entry = list[i]!;
       if (entry.remainingUses <= 0) continue;
-      const expanded = expandRoleGrant("none", entry.grants);
-      if (expanded.allEndpoints || matchesRouteGrant(expanded.apiIds, routeId, groupId)) {
+      if (this.agentAuthPermissions.matchesTemporaryGrant(entry.grants, routeId, groupId)) {
         entry.remainingUses--;
         if (entry.remainingUses <= 0) list.splice(i, 1);
         return true;
@@ -332,11 +374,23 @@ export class AgentAuthService implements AgentAuth {
   }
 
   authenticate(bearer: string, now: Date): AgentAuthContext | null {
-    const row: AuthRoleSessionRow | null = this.authRoleSessions.findByTokenHash(
-      authRoleSessionTokenHash(bearer),
-    );
-    if (row === null || row.expiresAt <= now.toISOString()) return null;
-    const grant = this.currentGrant(row.projectId, row.agentId);
+    const tokenHash = authRoleSessionTokenHash(bearer);
+    const row: AuthRoleSessionRow | null = this.authRoleSessions.findByTokenHash(tokenHash);
+    if (row === null) return null;
+    const key = this.agentKey(row.projectId, row.agentId);
+    if (row.expiresAt <= now.toISOString()) {
+      if (!this.activeTokenHashes.has(key) || this.activeTokenHashes.get(key) === tokenHash) {
+        this.clearSessionTemporaryGrants(key);
+        this.activeTokens.delete(key);
+        this.activeTokenHashes.delete(key);
+      }
+      return null;
+    }
+    const isActiveSession =
+      !this.activeTokenHashes.has(key) || this.activeTokenHashes.get(key) === tokenHash;
+    const grant = isActiveSession
+      ? this.currentGrant(row.projectId, row.agentId)
+      : this.agentAuthPermissions.grantOf(row.projectId, row.agentId, []);
     if (grant === null) return null;
     this.authRoleSessions.touch(row.tokenHash, now.toISOString());
     return {
@@ -350,8 +404,8 @@ export class AgentAuthService implements AgentAuth {
   revokeAll(projectId: string, agentId: string): void {
     const key = this.agentKey(projectId, agentId);
     this.activeTokens.delete(key);
-    this.onceGrants.delete(key);
-    this.agentSessionGrants.delete(key);
+    this.activeTokenHashes.delete(key);
+    this.clearSessionTemporaryGrants(key);
     this.upgradeRequests.delete(key);
     this.authRoleSessions.deleteByAgent(projectId, agentId);
   }
@@ -466,6 +520,14 @@ export class AgentAuthPermissionProvider implements AgentAuthPermissions {
 
   describeRouteAuthFailure(routeId: string, role: string, groupId?: string): RouteAuthDebugInfo {
     return this.roleRegistry.describeRouteAuthFailure(routeId, role, groupId);
+  }
+
+  matchesTemporaryGrant(grants: readonly string[], routeId: string, groupId?: string): boolean {
+    const expanded = this.roleRegistry.expandRoleGrant("none", grants);
+    return (
+      expanded.allEndpoints ||
+      matchesRouteGrant(expanded.apiIds, routeId, groupId, this.roleRegistry)
+    );
   }
 
   grantOf(

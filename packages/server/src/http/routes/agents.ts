@@ -360,11 +360,21 @@ export function agentsRoutes(deps: AgentsRouteDeps): Hono<AppEnv> {
         now: new Date(),
       });
     } catch (err) {
-      throw new HttpError(
-        404,
-        "upgrade_request_not_found",
-        err instanceof Error ? err.message : String(err),
-      );
+      if (
+        err !== null &&
+        typeof err === "object" &&
+        "status" in err &&
+        "code" in err &&
+        typeof (err as { status: unknown }).status === "number" &&
+        typeof (err as { code: unknown }).code === "string"
+      ) {
+        throw new HttpError(
+          (err as { status: 400 | 404 | 409 }).status,
+          (err as { code: string }).code,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+      throw err;
     }
     return c.json({
       request: result.request,

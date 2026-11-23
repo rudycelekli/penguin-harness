@@ -43,6 +43,8 @@ export interface Connection {
    * rather than named by `--server` / PENGUIN_API_URL; then the root says which instance it is.
    */
   fromRoot: boolean;
+  /** Whether the caller explicitly passed `--root`, selecting that root's server and credentials over ambient env vars. */
+  explicitRoot?: boolean;
 }
 
 /**
@@ -156,6 +158,7 @@ export async function resolveConnection(
     }
     return { baseUrl: url.origin, root, autoStarted: false, loopback, fromRoot: false };
   }
+  const explicitRoot = opts.root !== undefined;
   const lock = await liveServerLock(root);
   if (lock !== null) {
     return {
@@ -164,6 +167,7 @@ export async function resolveConnection(
       autoStarted: false,
       loopback: true,
       fromRoot: true,
+      ...(explicitRoot ? { explicitRoot: true } : {}),
     };
   }
   if (opts.autoStart === false) throw new Error(t.client.noServer());
@@ -174,6 +178,7 @@ export async function resolveConnection(
     autoStarted: true,
     loopback: true,
     fromRoot: true,
+    ...(explicitRoot ? { explicitRoot: true } : {}),
   };
   process.stderr.write(`${t.client.autoStarted(conn.baseUrl, logPath)}\n`);
   return conn;

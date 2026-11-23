@@ -345,16 +345,31 @@ writeFileSync(${JSON.stringify(turn1ReportPath)}, JSON.stringify(report, null, 2
   assert.equal(r1.cliAgentLsOk, true);
   assert.equal(r1.cliVaultSetDeniedOk, false);
 
-  await adminApi(
+  const decideOnceRes = await adminApi(
     "POST",
     `/api/projects/default_project/agents/qa_runner/auth/requests/${r1.reqOnceId}/decide`,
     { decision: "allowed_once" },
   );
-  await adminApi(
+  assert.equal(decideOnceRes.status, 200);
+  const decideOnceRepeat = await adminApi(
+    "POST",
+    `/api/projects/default_project/agents/qa_runner/auth/requests/${r1.reqOnceId}/decide`,
+    { decision: "allowed_once" },
+  );
+  assert.equal(decideOnceRepeat.status, 409);
+
+  const decideSessionRes = await adminApi(
     "POST",
     `/api/projects/default_project/agents/qa_runner/auth/requests/${r1.reqSessionId}/decide`,
     { decision: "allowed_for_agent" },
   );
+  assert.equal(decideSessionRes.status, 200);
+  const decideSessionConflict = await adminApi(
+    "POST",
+    `/api/projects/default_project/agents/qa_runner/auth/requests/${r1.reqSessionId}/decide`,
+    { decision: "deny" },
+  );
+  assert.equal(decideSessionConflict.status, 409);
 
   const turn2Script = join(dataDir, "probe-turn2.mjs");
   const turn2ReportPath = join(dataDir, "report-turn2.json");
