@@ -993,14 +993,16 @@ describe("extensible role registry, unified role->http bindings, no-wildcard enf
   it("enforces terminal state on upgrade requests, expands runtime-registered roles in allowed_once, and clears temporary grants when a session token expires or rotates", async () => {
     const { auth: agentAuth } = service();
     const runtimeGroup = new Hono<AppEnv>();
-    runtimeGroup.post("/run", (c) => c.json({ ok: "runtime-ran", projectId: c.req.param("projectId") }));
+    runtimeGroup.post("/run", (c) =>
+      c.json({ ok: "runtime-ran", projectId: c.req.param("projectId") }),
+    );
 
     agentAuth.registerRole("role.runtime_plugin.maintain", {
       id: "role.runtime_plugin.maintain",
     });
     agentAuth.registerRoute(
       {
-        routeId: "runtime_plugin.execute",
+        id: "runtime_plugin.execute",
         role: "runtime_plugin.maintain",
       },
       "RuntimePluginModule",

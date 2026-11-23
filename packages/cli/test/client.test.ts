@@ -268,9 +268,12 @@ describe("a plugin command that runs for a Session's driver, called outside a Se
       const headers = (init.headers ?? {}) as Record<string, string>;
       sent.push(headers);
       return headers.authorization !== undefined
-        ? new Response(JSON.stringify({ error: { code: "human_required", message: "human only" } }), {
-            status: 403,
-          })
+        ? new Response(
+            JSON.stringify({ error: { code: "human_required", message: "human only" } }),
+            {
+              status: 403,
+            },
+          )
         : new Response(JSON.stringify({ ok: true }), { status: 200 });
     }) as typeof fetch;
 

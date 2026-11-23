@@ -44,9 +44,7 @@ export class UpgradeRequestDecisionError extends Error {
   constructor(
     readonly status: 400 | 404 | 409,
     readonly code:
-      | "upgrade_request_not_found"
-      | "upgrade_request_already_decided"
-      | "invalid_upgrade_decision",
+      "upgrade_request_not_found" | "upgrade_request_already_decided" | "invalid_upgrade_decision",
     message: string,
   ) {
     super(message);

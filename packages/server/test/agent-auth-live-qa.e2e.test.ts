@@ -207,30 +207,11 @@ describe("Controlled Agent Auth QA: end-to-end session restrictions and permissi
         ).toBe(201);
 
         const rootToken = t.deps.authService.localApiToken();
-        // Verify that even a pre-existing / seeded Agent with no prior auth generation row
-        // (`default_agent`) receives a role-scoped Agent Session token from `controlEnv`,
-        // never falling back to the server-wide `rootToken`.
-        expect(agentAuth.generationOf("default_project", "default_agent")).toBeNull();
-        const defaultAgentEnv = t.deps.env.controlEnv({
-          projectId: "default_project",
-          agentId: "default_agent",
-          sessionId: "session-2026-11-22-00-00-00-00000001",
-        });
-        expect(defaultAgentEnv.PENGUIN_API_TOKEN).toBeDefined();
-        expect(defaultAgentEnv.PENGUIN_API_TOKEN).not.toBe(rootToken);
-        const defaultAgentAuthCtx = agentAuth.authenticate(
-          defaultAgentEnv.PENGUIN_API_TOKEN!,
-          new Date(),
-        );
-        expect(defaultAgentAuthCtx?.grant.role).toBe("general");
-        expect(defaultAgentAuthCtx?.grant.allEndpoints).toBe(false);
-
-        const issuedAgentToken = agentAuth.ensureSessionToken(
-          "default_project",
-          "qa_runner",
-          new Date(),
-        );
-        expect(issuedAgentToken).not.toBe(rootToken);
+        // Simulate a pre-existing Agent from before the migration (no `auth_generations` or
+        // `auth_role_sessions` rows in DB) and verify that starting its Session still provisions
+        // a role-scoped Agent Session token rather than falling back to `rootToken`.
+        agentAuth.revokeAll("default_project", "qa_runner");
+        expect(agentAuth.generationOf("default_project", "qa_runner")).toBeNull();
 
         const createSessRes = await adminHttp.post(
           "/api/projects/default_project/agents/qa_runner/sessions",
@@ -333,6 +314,7 @@ const reqSession = await callApi("POST", \`/api/projects/\${projectId}/agents/\$
 });
 
 fs.writeFileSync(${JSON.stringify(turn1ReportPath)}, JSON.stringify({
+  sessionToken: token,
   ownAuthStatus: ownAuth.status,
   ownRole: ownAuth.body?.role,
   ownConfigStatus: ownConfig.status,
@@ -350,6 +332,7 @@ fs.writeFileSync(${JSON.stringify(turn1ReportPath)}, JSON.stringify({
 
         await runSessionTurn(`${process.execPath} ${turn1Script}`);
         const r1 = JSON.parse(fs.readFileSync(turn1ReportPath, "utf8")) as {
+          sessionToken: string;
           ownAuthStatus: number;
           ownRole: string;
           ownConfigStatus: number;
@@ -367,6 +350,8 @@ fs.writeFileSync(${JSON.stringify(turn1ReportPath)}, JSON.stringify({
           reqSessionId: string;
         };
 
+        expect(r1.sessionToken).toBeTruthy();
+        expect(r1.sessionToken).not.toBe(rootToken);
         expect(r1.ownAuthStatus).toBe(200);
         expect(r1.ownRole).toBe("general");
         expect(r1.ownConfigStatus).toBe(200);
