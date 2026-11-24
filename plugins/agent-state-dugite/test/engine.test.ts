@@ -55,7 +55,7 @@ describe.skipIf(live === null)("the native engine", () => {
     );
 
   beforeEach(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-state-git-"));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-state-dugite-"));
     gitdir = path.join(dir, "agent_state.git");
   });
   afterEach(async () => {

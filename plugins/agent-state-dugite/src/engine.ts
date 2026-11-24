@@ -235,7 +235,7 @@ export function openGitEngine(host: AgentStateEngineHost): Promise<AgentStateEng
   let open = opening.get(host.cacheDir);
   if (open === undefined) {
     open = (async () => {
-      const say = (line: string) => host.log(`[agent-state-git] ${line}`);
+      const say = (line: string) => host.log(`[agent-state-dugite] ${line}`);
       let found: Awaited<ReturnType<typeof locateGit>>;
       try {
         found = await locateGit({ cacheDir: host.cacheDir, log: host.log });

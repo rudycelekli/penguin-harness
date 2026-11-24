@@ -1,7 +1,7 @@
 /**
- * What the live suites share: the Git the global setup fetched, this plugin's engine over it, and
- * the server's own Agent State repository and built-in engine, imported by path (this package
- * depends on core alone) to compare against.
+ * What the live suites share: this host's Git, this plugin's engine over it, and the server's
+ * own Agent State repository and built-in engine, imported by path (this package depends on
+ * core alone) to compare against.
  */
 import { fileURLToPath } from "node:url";
 import type { AgentStateEngine } from "@prismshadow/penguin-core/plugin";
@@ -16,9 +16,9 @@ export { GIT_CACHE };
 export async function liveGit(): Promise<{ engine: AgentStateEngine; git: GitProgram } | null> {
   const logged: string[] = [];
   const engine = await openGitEngine({ cacheDir: GIT_CACHE, log: (line) => logged.push(line) });
-  const found = engine === null ? null : await locateGit({ cacheDir: GIT_CACHE });
+  const found = engine === null ? null : await locateGit();
   const why = engine === null || found === null ? logged.join("; ") || "no Git" : null;
-  return mustRun("agent-state-git", why) ? { engine: engine!, git: found!.git } : null;
+  return mustRun("agent-state-gitcl", why) ? { engine: engine!, git: found!.git } : null;
 }
 
 /** The slice of the server's ./workbenches/repo.ts these suites drive. */

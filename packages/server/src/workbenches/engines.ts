@@ -27,7 +27,7 @@ import type { Log, Paths } from "../hmr/capabilities.js";
 
 export interface AgentStateEnginesSlots {
   /** One engine: its name here, its source bound by the contributor. */
-  engines: Slot<{ name: string }, AgentStateEngineSource>;
+  engines: Slot<{ name: string; preferred?: boolean }, AgentStateEngineSource>;
 }
 
 /** Which engine records Agent State versions. */
@@ -47,10 +47,21 @@ export class EngineChoice implements AgentStateEngines {
   private readonly order: string[] = [];
 
   constructor(
-    contributions: ReadonlyArray<{ id: string; name: string; source: AgentStateEngineSource }>,
+    contributions: ReadonlyArray<{
+      id: string;
+      name: string;
+      preferred?: boolean;
+      source: AgentStateEngineSource;
+    }>,
     opts: { root: string; log: (line: string) => void },
   ) {
-    for (const { id, name, source } of contributions) {
+    // A `preferred` engine runs before the others when its own probe passes: the host Git of
+    // agent-state-gitcl over the build agent-state-dugite fetches, for instance. The sort is
+    // stable, so engines of the same mind keep their contribution order.
+    const ordered = [...contributions].sort(
+      (a, b) => Number(b.preferred === true) - Number(a.preferred === true),
+    );
+    for (const { id, name, source } of ordered) {
       this.order.push(id);
       const say = (line: string) => opts.log(`[agent-state] ${name}: ${line}`);
       let answer: ReturnType<AgentStateEngineSource>;
@@ -101,6 +112,7 @@ export class AgentStateHistoryModule {
       (contributions.engines ?? []).map((c) => ({
         id: c.id,
         name: c.data.name as string,
+        preferred: c.data.preferred as boolean | undefined,
         source: c.code as AgentStateEngineSource,
       })),
       { root: this.paths.root, log: (line) => this.log.line(line) },

@@ -5,7 +5,8 @@
  * - A contributed engine is used from the moment its source answers with it, and was handed a
  *   directory of its own under the data root; until then, and when it answers null, fails, or
  *   throws, the built-in engine does, and the log says which.
- * - Of several, the first in contribution order that is ready; a dropped one is passed over.
+ * - Of several, a `preferred` one runs before the others; within each group, the first in
+ *   contribution order that is ready, and a dropped one is passed over.
  */
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -31,10 +32,17 @@ function deferred() {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function choose(...sources: Array<[string, AgentStateEngineSource]>) {
+function choose(
+  ...sources: Array<{ id: string; source: AgentStateEngineSource; preferred?: boolean }>
+) {
   const logged: string[] = [];
   const choice = new EngineChoice(
-    sources.map(([id, source]) => ({ id, name: id.split(".")[0]!, source })),
+    sources.map(({ id, source, preferred }) => ({
+      id,
+      name: id.split(".")[0]!,
+      preferred,
+      source,
+    })),
     { root: ROOT, log: (line) => logged.push(line) },
   );
   return { choice, logged };
@@ -47,7 +55,7 @@ describe("the engine that records versions", () => {
 
   it("is a contributed one from the moment it answers, asked with a directory of its own", async () => {
     const git = deferred();
-    const { choice, logged } = choose(["dugite.engine", git.source]);
+    const { choice, logged } = choose({ id: "dugite.engine", source: git.source });
     expect(git.asked).toEqual([path.join(ROOT, "cache", "dugite.engine")]);
     expect(choice.current()).toBeNull();
 
@@ -78,7 +86,7 @@ describe("the engine that records versions", () => {
       line: "[agent-state] dugite: not started (no platform); the built-in engine records versions",
     },
   ])("stays the built-in one when the source $how, and says so", async ({ source, line }) => {
-    const { choice, logged } = choose(["dugite.engine", source]);
+    const { choice, logged } = choose({ id: "dugite.engine", source });
     await settle();
 
     expect(choice.current()).toBeNull();
@@ -88,7 +96,10 @@ describe("the engine that records versions", () => {
   it("of several, is the first ready in contribution order, passing over a dropped one", async () => {
     const first = deferred();
     const second = named("second");
-    const { choice } = choose(["first.engine", first.source], ["second.engine", () => second]);
+    const { choice } = choose(
+      { id: "first.engine", source: first.source },
+      { id: "second.engine", source: () => second },
+    );
     await settle();
     expect(choice.current()).toBe(second);
 
@@ -99,5 +110,38 @@ describe("the engine that records versions", () => {
 
     choice.drop(engine);
     expect(choice.current()).toBe(second);
+  });
+
+  it("of several, runs a preferred one before the others", async () => {
+    const later = named("later");
+    const preferred = named("preferred");
+    // Alphabetically "later.engine" sorts before "preferred.engine", so this is the sort, not
+    // the contribution order, that puts the preferred one first.
+    const { choice, logged } = choose(
+      { id: "later.engine", source: () => later },
+      { id: "preferred.engine", source: () => preferred, preferred: true },
+    );
+    await settle();
+
+    expect(choice.current()).toBe(preferred);
+    expect(logged).toEqual([
+      "[agent-state] preferred: preferred records Agent State versions",
+      "[agent-state] later: later records Agent State versions",
+    ]);
+  });
+
+  it("falls past a preferred one that answers null, to the next engine", async () => {
+    const fallback = named("fallback");
+    const { choice, logged } = choose(
+      { id: "preferred.engine", source: () => null, preferred: true },
+      { id: "fallback.engine", source: () => fallback },
+    );
+    await settle();
+
+    expect(choice.current()).toBe(fallback);
+    expect(logged).toEqual([
+      "[agent-state] preferred: not available on this host; the built-in engine records versions",
+      "[agent-state] fallback: fallback records Agent State versions",
+    ]);
   });
 });

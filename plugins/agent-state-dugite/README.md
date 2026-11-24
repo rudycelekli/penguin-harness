@@ -1,9 +1,12 @@
-# Native Git for Agent State
+# Native Git (dugite) for Agent State
 
 Records an Agent's workbench versions with native Git instead of the harness's built-in
 pure-JavaScript engine. The versions, the repository and the history the Web App shows are the
 same either way: both engines write the same commits, so the plugin can be installed or removed
 at any time.
+
+Where the host already has a `git`, the agent-state-gitcl plugin records versions with it and
+needs no download; this plugin is the fallback for a host without one.
 
 ## What it changes
 
@@ -42,7 +45,7 @@ GitHub Desktop's build of Git, as [dugite](https://github.com/desktop/dugite) pi
 [dugite-native](https://github.com/desktop/dugite-native) per platform, with its sha256. The
 first time the plugin runs on a host, it downloads that archive (24–65 MiB), verifies it, keeps
 only the `git` program (on Windows also the DLLs it loads) under
-`<data root>/cache/agent-state-git.engine/`, and deletes the archive. The kept copy is 3.4–7.1
+`<data root>/cache/agent-state-dugite.engine/`, and deletes the archive. The kept copy is 3.4–7.1
 MiB. Until it is in place, and on any host where it cannot be, the built-in engine records
 versions; the server log says which engine is in use and why.
 
@@ -73,19 +76,19 @@ the App re-assembles itself, no restart. Written by hand, it is a row of a Proje
 
 ```toml
 [plugins]
-"@penguinharness/agent-state-git" = "*"
+"@penguinharness/agent-state-dugite" = "*"
 ```
 
 ## Development
 
 ```bash
-pnpm --filter @penguinharness/agent-state-git test    # fetches the Git into node_modules/.cache once
-pnpm --filter @penguinharness/agent-state-git bench   # the two engines, step by step
+pnpm --filter @penguinharness/agent-state-dugite test    # fetches the Git into node_modules/.cache once
+pnpm --filter @penguinharness/agent-state-dugite bench   # the two engines, step by step
 ```
 
 The tests run the server's own Agent State suite with this engine, and check that it writes the
 very commits the built-in engine writes. Where the host cannot get the Git they skip, unless
-`PENGUIN_MUST_RUN` names `agent-state-git` (CI does).
+`PENGUIN_MUST_RUN` names `agent-state-dugite` (CI does).
 
 ## License
 
